@@ -1,4 +1,7 @@
 # AI Novel Studio - Tạo Truyện Ngắn AI
+Web: https://taotruyen.onrender.com/
+Trang quản trị: tk mk là admin
+               
 
 Ứng dụng sáng tác truyện ngắn, truyện dài kỳ (10.000 - 20.000 từ) và kịch bản phim ngắn / Zhihu Trung Quốc sử dụng Google Gemini Free API, tự động định dạng và làm sạch văn bản sẵn sàng chuyển sang Audio / TTS.
 

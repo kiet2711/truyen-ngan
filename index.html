@@ -21,6 +21,35 @@
         </div>
       </div>
       <div class="header-actions">
+        <!-- User Auth Status / Actions -->
+        <div id="userHeaderArea" class="user-header-area">
+          <button id="btnOpenAuth" class="btn btn-secondary btn-sm btn-auth-pill">
+            <span>👤</span> Đăng Nhập / Đăng Ký
+          </button>
+          
+          <div id="userProfileWidget" class="user-profile-widget" style="display: none;">
+            <button class="user-profile-badge" id="btnUserDropdownToggle">
+              <span class="user-avatar-icon">🧑‍💻</span>
+              <span id="headerUsername" class="header-username">User</span>
+              <span id="headerUserRoleBadge" class="badge badge-emerald role-pill">USER</span>
+              <span style="font-size: 10px; margin-left: 2px;">▼</span>
+            </button>
+            <div class="user-dropdown-menu" id="userDropdownMenu" style="display: none;">
+              <div class="dropdown-item user-info-item">
+                <span class="dropdown-username" id="dropdownUsername">User</span>
+                <span id="dropdownUserEmail" class="dropdown-email">user@example.com</span>
+              </div>
+              <div class="dropdown-divider"></div>
+              <button id="btnOpenAdminPanel" class="dropdown-item admin-only-item" style="display: none;">
+                👑 Bảng Quản Trị Admin
+              </button>
+              <button id="btnLogout" class="dropdown-item text-danger">
+                🚪 Đăng Xuất
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div id="apiKeyStatusBadge" class="badge badge-purple" style="cursor: pointer;" title="Nhấp để cấu hình API Key">
           🔑 <span id="keyStatusText">Chưa có API Key</span>
         </div>
@@ -485,6 +514,141 @@
       </div>
       <div id="libraryListContainer" style="display: flex; flex-direction: column; gap: 12px; max-height: 55vh; overflow-y: auto;">
         <!-- Rendered via JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: AUTHENTICATION (LOGIN / REGISTER) ==================== -->
+  <div class="modal-backdrop" id="authModal" style="display: none;">
+    <div class="modal-window" style="max-width: 440px;">
+      <div class="modal-header">
+        <div class="modal-title" id="authModalTitle">🔐 Đăng Nhập Tài Khoản</div>
+        <button class="modal-close" id="btnCloseAuth">&times;</button>
+      </div>
+
+      <!-- Auth Tabs -->
+      <div class="auth-tab-row">
+        <button class="auth-tab active" id="tabAuthLogin" type="button">Đăng Nhập</button>
+        <button class="auth-tab" id="tabAuthRegister" type="button">Đăng Ký Mới</button>
+      </div>
+
+      <!-- Error Alert -->
+      <div id="authAlertBox" class="auth-alert" style="display: none;"></div>
+
+      <!-- Login Form -->
+      <form id="loginForm" class="auth-form">
+        <div class="auth-field">
+          <label class="param-label">Tên đăng nhập hoặc Email:</label>
+          <input type="text" id="loginIdentifier" class="param-input" placeholder="Nhập username hoặc email..." required autocomplete="username">
+        </div>
+        <div class="auth-field">
+          <label class="param-label">Mật khẩu:</label>
+          <input type="password" id="loginPassword" class="param-input" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+        <button type="submit" id="btnLoginSubmit" class="btn btn-primary" style="width: 100%; margin-top: 14px;">
+          🚀 Đăng Nhập
+        </button>
+      </form>
+
+      <!-- Register Form -->
+      <form id="registerForm" class="auth-form" style="display: none;">
+        <div class="auth-field">
+          <label class="param-label">Tên đăng nhập (Username):</label>
+          <input type="text" id="regUsername" class="param-input" placeholder="Ví dụ: kiet2711 (tối thiểu 3 ký tự)..." required minlength="3" autocomplete="username">
+        </div>
+        <div class="auth-field">
+          <label class="param-label">Email:</label>
+          <input type="email" id="regEmail" class="param-input" placeholder="name@example.com..." required autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label class="param-label">Mật khẩu:</label>
+          <input type="password" id="regPassword" class="param-input" placeholder="Tối thiểu 6 ký tự..." required minlength="6" autocomplete="new-password">
+        </div>
+        <div class="auth-field">
+          <label class="param-label">Xác nhận mật khẩu:</label>
+          <input type="password" id="regPasswordConfirm" class="param-input" placeholder="Nhập lại mật khẩu..." required minlength="6" autocomplete="new-password">
+        </div>
+        <button type="submit" id="btnRegisterSubmit" class="btn btn-success" style="width: 100%; margin-top: 14px;">
+          ✨ Tạo Tài Khoản Ngay
+        </button>
+      </form>
+
+      <div class="auth-footer-note">
+        💡 <em>Đăng nhập giúp tự động lưu và đồng bộ toàn bộ Thẻ Trope của bạn lên cơ sở dữ liệu Neon Cloud!</em>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: ADMIN MANAGEMENT PANEL ==================== -->
+  <div class="modal-backdrop" id="adminModal" style="display: none;">
+    <div class="modal-window modal-window-lg" style="max-width: 960px; width: 95%;">
+      <div class="modal-header">
+        <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>👑</span> BẢNG QUẢN TRỊ ADMIN (Quản Lý Người Dùng & Hệ Thống)
+        </div>
+        <button class="modal-close" id="btnCloseAdmin">&times;</button>
+      </div>
+
+      <!-- Admin Stats Row -->
+      <div class="admin-stats-grid">
+        <div class="admin-stat-card">
+          <div class="admin-stat-icon">👥</div>
+          <div class="admin-stat-info">
+            <div class="admin-stat-label">Tổng Người Dùng</div>
+            <div class="admin-stat-value" id="statTotalUsers">0</div>
+          </div>
+        </div>
+        <div class="admin-stat-card">
+          <div class="admin-stat-icon text-emerald">🟢</div>
+          <div class="admin-stat-info">
+            <div class="admin-stat-label">Đang Hoạt Động</div>
+            <div class="admin-stat-value text-emerald" id="statActiveUsers">0</div>
+          </div>
+        </div>
+        <div class="admin-stat-card">
+          <div class="admin-stat-icon text-danger">🚫</div>
+          <div class="admin-stat-info">
+            <div class="admin-stat-label">Đã Khóa (Banned)</div>
+            <div class="admin-stat-value text-danger" id="statBannedUsers">0</div>
+          </div>
+        </div>
+        <div class="admin-stat-card">
+          <div class="admin-stat-icon text-pink">🏷️</div>
+          <div class="admin-stat-info">
+            <div class="admin-stat-label">Tổng Thẻ Trope Tạo</div>
+            <div class="admin-stat-value text-pink" id="statTotalTags">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls & Search -->
+      <div class="admin-toolbar">
+        <div style="flex: 1; position: relative;">
+          <input type="text" id="adminSearchUsers" class="param-input" placeholder="🔍 Tìm kiếm theo tên đăng nhập hoặc email...">
+        </div>
+        <button id="btnRefreshAdminUsers" class="btn btn-secondary btn-sm">
+          🔄 Tải Lại
+        </button>
+      </div>
+
+      <!-- Users Table -->
+      <div class="admin-table-container">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th style="width: 50px;">ID</th>
+              <th>Tài Khoản</th>
+              <th>Email</th>
+              <th>Vai Trò</th>
+              <th>Thẻ Đã Tạo</th>
+              <th>Trạng Thái</th>
+              <th style="text-align: right;">Hành Động</th>
+            </tr>
+          </thead>
+          <tbody id="adminUsersTableBody">
+            <!-- Rendered via JS -->
+          </tbody>
+        </table>
       </div>
     </div>
   </div>

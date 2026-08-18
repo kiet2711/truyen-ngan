@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node server.js"
   },
-  "keywords": ["gemini", "ai-story", "novel-generator", "tts", "audio-stories"],
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "keywords": ["gemini", "ai-story", "novel-generator", "tts", "audio-stories", "neon", "postgres"],
   "author": "",
   "license": "MIT"
 }

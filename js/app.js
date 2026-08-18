@@ -1,12 +1,8 @@
-/**
- * AI Novel Studio - Core Application Logic (Phim Ngắn / Zhihu Style)
- * Quản lý chọn Trope Tag, AI sinh 3 Concept, Checkpoint 1 & 2, Trình đọc và Xuất bản
- */
-
 import { TROPE_CATEGORIES, ALL_TROPES, getRandomTropes, getRandomSamplePremise } from "./data/tagPools.js";
 import { normalizeTextForAudio } from "./data/numberToWordsVi.js";
 import { geminiService } from "./services/geminiService.js";
 import { storageService } from "./services/storageService.js";
+import { authService } from "./services/authService.js";
 
 class NovelStudioApp {
   constructor() {
@@ -19,6 +15,7 @@ class NovelStudioApp {
     this.isWriting = false;
     this.isPaused = false;
     this.isAudioCleaned = false;
+    this.adminUsers = [];
 
     this.init();
   }
@@ -28,6 +25,7 @@ class NovelStudioApp {
     this.updateApiKeyStatus();
     this.updateSavedCount();
     this.renderTropeCloud();
+    await this.initAuth();
   }
 
   // ==================== UI HELPERS & NOTIFICATIONS ====================
@@ -221,7 +219,7 @@ class NovelStudioApp {
     }
   }
 
-  addCustomTag(rawInput) {
+  async addCustomTag(rawInput) {
     if (!rawInput || !rawInput.trim()) {
       this.showToast("Vui lòng nhập tên thẻ trope!", "warning");
       return;
@@ -247,6 +245,9 @@ class NovelStudioApp {
     });
 
     storageService.saveCustomTags(this.customTags);
+    if (authService.isLoggedIn()) {
+      await authService.saveUserTags(this.customTags);
+    }
     this.renderTropeCloud();
 
     const input = document.getElementById("customTagInput");
@@ -259,10 +260,13 @@ class NovelStudioApp {
     }
   }
 
-  removeCustomTag(tagName) {
+  async removeCustomTag(tagName) {
     this.customTags = this.customTags.filter(t => t !== tagName);
     this.selectedTags.delete(tagName);
     storageService.saveCustomTags(this.customTags);
+    if (authService.isLoggedIn()) {
+      await authService.deleteUserTag(tagName);
+    }
     this.renderTropeCloud();
     this.showToast(`Đã xóa thẻ: "${tagName}"`, "info");
   }
@@ -272,6 +276,349 @@ class NovelStudioApp {
     this.selectedTags = new Set(randomTags);
     this.renderTropeCloud();
     this.showToast(`Đã chọn ngẫu nhiên: ${randomTags.join(", ")}`, "info");
+  }
+
+  // ==================== AUTHENTICATION & USER MANAGEMENT ====================
+
+  async initAuth() {
+    authService.onAuthChange((user) => this.renderUserHeader(user));
+
+    try {
+      const user = await authService.init();
+      if (user) {
+        // Load cloud custom tags
+        const cloudTags = await authService.fetchUserTags();
+        if (cloudTags && Array.isArray(cloudTags)) {
+          this.customTags = cloudTags;
+          storageService.saveCustomTags(this.customTags);
+          this.renderTropeCloud();
+        }
+      }
+    } catch (err) {
+      this.showToast(err.message, "error");
+    }
+  }
+
+  renderUserHeader(user) {
+    const btnOpenAuth = document.getElementById("btnOpenAuth");
+    const userProfileWidget = document.getElementById("userProfileWidget");
+    const headerUsername = document.getElementById("headerUsername");
+    const headerUserRoleBadge = document.getElementById("headerUserRoleBadge");
+    const dropdownUsername = document.getElementById("dropdownUsername");
+    const dropdownUserEmail = document.getElementById("dropdownUserEmail");
+    const btnOpenAdminPanel = document.getElementById("btnOpenAdminPanel");
+
+    if (user) {
+      if (btnOpenAuth) btnOpenAuth.style.display = "none";
+      if (userProfileWidget) userProfileWidget.style.display = "block";
+
+      if (headerUsername) headerUsername.textContent = user.username;
+      if (dropdownUsername) dropdownUsername.textContent = user.username;
+      if (dropdownUserEmail) dropdownUserEmail.textContent = user.email;
+
+      if (headerUserRoleBadge) {
+        if (user.role === "admin") {
+          headerUserRoleBadge.className = "badge badge-purple role-pill";
+          headerUserRoleBadge.textContent = "👑 ADMIN";
+        } else {
+          headerUserRoleBadge.className = "badge badge-emerald role-pill";
+          headerUserRoleBadge.textContent = "MEMBER";
+        }
+      }
+
+      if (btnOpenAdminPanel) {
+        btnOpenAdminPanel.style.display = user.role === "admin" ? "flex" : "none";
+      }
+    } else {
+      if (btnOpenAuth) btnOpenAuth.style.display = "inline-flex";
+      if (userProfileWidget) userProfileWidget.style.display = "none";
+      const dropdown = document.getElementById("userDropdownMenu");
+      if (dropdown) dropdown.style.display = "none";
+    }
+  }
+
+  openAuthModal(tab = "login") {
+    const modal = document.getElementById("authModal");
+    const alertBox = document.getElementById("authAlertBox");
+    if (alertBox) {
+      alertBox.style.display = "none";
+      alertBox.textContent = "";
+    }
+    this.switchAuthTab(tab);
+    if (modal) modal.classList.add("open");
+  }
+
+  closeAuthModal() {
+    const modal = document.getElementById("authModal");
+    if (modal) modal.classList.remove("open");
+  }
+
+  switchAuthTab(tab) {
+    const tabLogin = document.getElementById("tabAuthLogin");
+    const tabRegister = document.getElementById("tabAuthRegister");
+    const formLogin = document.getElementById("loginForm");
+    const formRegister = document.getElementById("registerForm");
+    const title = document.getElementById("authModalTitle");
+    const alertBox = document.getElementById("authAlertBox");
+
+    if (alertBox) {
+      alertBox.style.display = "none";
+      alertBox.textContent = "";
+    }
+
+    if (tab === "login") {
+      tabLogin.classList.add("active");
+      tabRegister.classList.remove("active");
+      formLogin.style.display = "flex";
+      formRegister.style.display = "none";
+      if (title) title.textContent = "🔐 Đăng Nhập Tài Khoản";
+      setTimeout(() => document.getElementById("loginIdentifier")?.focus(), 100);
+    } else {
+      tabLogin.classList.remove("active");
+      tabRegister.classList.add("active");
+      formLogin.style.display = "none";
+      formRegister.style.display = "flex";
+      if (title) title.textContent = "✨ Đăng Ký Tài Khoản Mới";
+      setTimeout(() => document.getElementById("regUsername")?.focus(), 100);
+    }
+  }
+
+  async handleLoginSubmit(e) {
+    e.preventDefault();
+    const identifier = document.getElementById("loginIdentifier").value.trim();
+    const password = document.getElementById("loginPassword").value;
+    const alertBox = document.getElementById("authAlertBox");
+    const btn = document.getElementById("btnLoginSubmit");
+    const originText = btn.innerHTML;
+
+    alertBox.style.display = "none";
+    btn.disabled = true;
+    btn.innerHTML = `<span class="typing-cursor"></span> Đang đăng nhập...`;
+
+    try {
+      const user = await authService.login(identifier, password);
+      this.showToast(`Chào mừng trở lại, ${user.username}! 🎉`, "success");
+      
+      // Load user cloud tags
+      const cloudTags = await authService.fetchUserTags();
+      if (cloudTags && Array.isArray(cloudTags)) {
+        this.customTags = cloudTags;
+        storageService.saveCustomTags(this.customTags);
+        this.renderTropeCloud();
+      }
+
+      this.closeAuthModal();
+    } catch (err) {
+      alertBox.textContent = err.message;
+      alertBox.style.display = "block";
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = originText;
+    }
+  }
+
+  async handleRegisterSubmit(e) {
+    e.preventDefault();
+    const username = document.getElementById("regUsername").value.trim();
+    const email = document.getElementById("regEmail").value.trim();
+    const password = document.getElementById("regPassword").value;
+    const confirm = document.getElementById("regPasswordConfirm").value;
+    const alertBox = document.getElementById("authAlertBox");
+    const btn = document.getElementById("btnRegisterSubmit");
+    const originText = btn.innerHTML;
+
+    if (password !== confirm) {
+      alertBox.textContent = "Mật khẩu xác nhận không khớp!";
+      alertBox.style.display = "block";
+      return;
+    }
+
+    alertBox.style.display = "none";
+    btn.disabled = true;
+    btn.innerHTML = `<span class="typing-cursor"></span> Đang tạo tài khoản...`;
+
+    try {
+      const user = await authService.register(username, email, password);
+      this.showToast(`Tạo tài khoản thành công! Chào mừng, ${user.username}! 🚀`, "success");
+
+      // Save any existing local tags to user's new account
+      if (this.customTags.length > 0) {
+        await authService.saveUserTags(this.customTags);
+      }
+
+      this.closeAuthModal();
+    } catch (err) {
+      alertBox.textContent = err.message;
+      alertBox.style.display = "block";
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = originText;
+    }
+  }
+
+  async handleLogout() {
+    await authService.logout();
+    this.customTags = storageService.getCustomTags();
+    this.renderTropeCloud();
+    this.showToast("Đã đăng xuất tài khoản!", "info");
+  }
+
+  // ==================== ADMIN PANEL CONTROLLERS ====================
+
+  async openAdminModal() {
+    if (!authService.isAdmin()) {
+      this.showToast("Bạn không có quyền truy cập trang Quản trị Admin!", "error");
+      return;
+    }
+
+    document.getElementById("adminModal").classList.add("open");
+    await this.loadAdminData();
+  }
+
+  closeAdminModal() {
+    document.getElementById("adminModal").classList.remove("open");
+  }
+
+  async loadAdminData() {
+    const tableBody = document.getElementById("adminUsersTableBody");
+    tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 24px;"><span class="typing-cursor"></span> Đang tải dữ liệu từ Neon DB...</td></tr>`;
+
+    try {
+      const stats = await authService.adminGetStats();
+      if (stats) {
+        document.getElementById("statTotalUsers").textContent = stats.totalUsers || 0;
+        document.getElementById("statActiveUsers").textContent = stats.activeUsers || 0;
+        document.getElementById("statBannedUsers").textContent = stats.bannedUsers || 0;
+        document.getElementById("statTotalTags").textContent = stats.totalTags || 0;
+      }
+
+      this.adminUsers = await authService.adminGetUsers();
+      this.renderAdminUsersTable(this.adminUsers);
+    } catch (err) {
+      console.error(err);
+      tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--accent-rose); padding: 20px;">Lỗi tải dữ liệu: ${err.message}</td></tr>`;
+      this.showToast(`Lỗi admin: ${err.message}`, "error");
+    }
+  }
+
+  renderAdminUsersTable(users) {
+    const tableBody = document.getElementById("adminUsersTableBody");
+    tableBody.innerHTML = "";
+
+    if (!users || users.length === 0) {
+      tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">Không tìm thấy người dùng nào.</td></tr>`;
+      return;
+    }
+
+    users.forEach(user => {
+      const tr = document.createElement("tr");
+
+      const isCurrentLoggedIn = authService.currentUser?.id === user.id;
+      const isAdminUser = user.role === "admin";
+      const isBanned = Boolean(user.is_banned);
+
+      tr.innerHTML = `
+        <td style="color: var(--text-dim); font-size: 11px;">#${user.id}</td>
+        <td>
+          <div style="font-weight: 700; color: #fff;">${user.username} ${isCurrentLoggedIn ? '<span style="font-size: 10px; color: var(--accent-pink);">(Bạn)</span>' : ''}</div>
+          <div style="font-size: 11px; color: var(--text-dim);">Tạo: ${new Date(user.created_at).toLocaleDateString("vi-VN")}</div>
+        </td>
+        <td style="color: var(--text-muted); font-size: 12px;">${user.email}</td>
+        <td>
+          <span class="${isAdminUser ? 'badge-role-admin' : 'badge-role-user'}">${isAdminUser ? '👑 ADMIN' : 'MEMBER'}</span>
+        </td>
+        <td style="font-weight: 600; color: #f472b6;">${user.custom_tag_count || 0} thẻ</td>
+        <td>
+          <span class="${isBanned ? 'badge-status-banned' : 'badge-status-active'}">
+            ${isBanned ? '🚫 ĐÃ KHÓA' : '🟢 HOẠT ĐỘNG'}
+          </span>
+        </td>
+        <td style="text-align: right;">
+          <div class="admin-actions-cell">
+            ${!isAdminUser ? `
+              <button class="btn-action-xs ${isBanned ? 'btn-action-unban' : 'btn-action-ban'} btn-toggle-ban" data-id="${user.id}" data-banned="${isBanned}">
+                ${isBanned ? '✅ Mở Khóa' : '🚫 Khóa Nick'}
+              </button>
+              <button class="btn-action-xs btn-action-role btn-toggle-role" data-id="${user.id}" data-role="${user.role}">
+                ${user.role === 'admin' ? 'Hạ Quyền' : '⭐ Lên Admin'}
+              </button>
+              <button class="btn-action-xs btn-action-delete btn-delete-user" data-id="${user.id}" data-username="${user.username}" title="Xóa tài khoản">
+                🗑️
+              </button>
+            ` : `<span style="font-size: 11px; color: var(--text-dim); font-style: italic;">Admin gốc</span>`}
+          </div>
+        </td>
+      `;
+
+      // Event: Toggle Ban
+      const banBtn = tr.querySelector(".btn-toggle-ban");
+      if (banBtn) {
+        banBtn.addEventListener("click", async () => {
+          const targetBan = !isBanned;
+          const confirmMsg = targetBan 
+            ? `Bạn có chắc chắn muốn KHÓA (Ban) tài khoản "${user.username}" không? Người này sẽ không thể đăng nhập được nữa.`
+            : `Mở khóa tài khoản "${user.username}"?`;
+          
+          if (confirm(confirmMsg)) {
+            try {
+              await authService.adminSetBan(user.id, targetBan);
+              this.showToast(`Đã ${targetBan ? 'khóa' : 'mở khóa'} tài khoản "${user.username}" thành công!`, "success");
+              await this.loadAdminData();
+            } catch (err) {
+              this.showToast(err.message, "error");
+            }
+          }
+        });
+      }
+
+      // Event: Toggle Role
+      const roleBtn = tr.querySelector(".btn-toggle-role");
+      if (roleBtn) {
+        roleBtn.addEventListener("click", async () => {
+          const newRole = user.role === "admin" ? "user" : "admin";
+          if (confirm(`Bạn có muốn đổi vai trò của "${user.username}" thành "${newRole.toUpperCase()}"?`)) {
+            try {
+              await authService.adminSetRole(user.id, newRole);
+              this.showToast(`Đã cập nhật vai trò "${user.username}" thành ${newRole}!`, "success");
+              await this.loadAdminData();
+            } catch (err) {
+              this.showToast(err.message, "error");
+            }
+          }
+        });
+      }
+
+      // Event: Delete User
+      const delBtn = tr.querySelector(".btn-delete-user");
+      if (delBtn) {
+        delBtn.addEventListener("click", async () => {
+          if (confirm(`CẢNH BÁO: Bạn có chắc chắn muốn XÓA VĨNH VIỄN tài khoản "${user.username}" và toàn bộ dữ liệu thẻ của người này không?`)) {
+            try {
+              await authService.adminDeleteUser(user.id);
+              this.showToast(`Đã xóa tài khoản "${user.username}"!`, "success");
+              await this.loadAdminData();
+            } catch (err) {
+              this.showToast(err.message, "error");
+            }
+          }
+        });
+      }
+
+      tableBody.appendChild(tr);
+    });
+  }
+
+  filterAdminUsers(query) {
+    const q = (query || "").toLowerCase().trim();
+    if (!q) {
+      this.renderAdminUsersTable(this.adminUsers);
+      return;
+    }
+    const filtered = this.adminUsers.filter(u => 
+      (u.username || "").toLowerCase().includes(q) ||
+      (u.email || "").toLowerCase().includes(q)
+    );
+    this.renderAdminUsersTable(filtered);
   }
 
   // ==================== STEP 1.5: GENERATE 3 CONCEPTS ====================
@@ -811,6 +1158,76 @@ class NovelStudioApp {
   // ==================== EVENT BINDINGS ====================
 
   bindEvents() {
+    // Auth & User Dropdown Events
+    const btnOpenAuth = document.getElementById("btnOpenAuth");
+    if (btnOpenAuth) {
+      btnOpenAuth.addEventListener("click", () => this.openAuthModal("login"));
+    }
+
+    const btnCloseAuth = document.getElementById("btnCloseAuth");
+    if (btnCloseAuth) {
+      btnCloseAuth.addEventListener("click", () => this.closeAuthModal());
+    }
+
+    const tabAuthLogin = document.getElementById("tabAuthLogin");
+    if (tabAuthLogin) {
+      tabAuthLogin.addEventListener("click", () => this.switchAuthTab("login"));
+    }
+
+    const tabAuthRegister = document.getElementById("tabAuthRegister");
+    if (tabAuthRegister) {
+      tabAuthRegister.addEventListener("click", () => this.switchAuthTab("register"));
+    }
+
+    const loginForm = document.getElementById("loginForm");
+    if (loginForm) {
+      loginForm.addEventListener("submit", (e) => this.handleLoginSubmit(e));
+    }
+
+    const registerForm = document.getElementById("registerForm");
+    if (registerForm) {
+      registerForm.addEventListener("submit", (e) => this.handleRegisterSubmit(e));
+    }
+
+    const btnUserDropdownToggle = document.getElementById("btnUserDropdownToggle");
+    const userDropdownMenu = document.getElementById("userDropdownMenu");
+    if (btnUserDropdownToggle && userDropdownMenu) {
+      btnUserDropdownToggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isOpen = userDropdownMenu.style.display === "block";
+        userDropdownMenu.style.display = isOpen ? "none" : "block";
+      });
+      document.addEventListener("click", () => {
+        userDropdownMenu.style.display = "none";
+      });
+    }
+
+    const btnLogout = document.getElementById("btnLogout");
+    if (btnLogout) {
+      btnLogout.addEventListener("click", () => this.handleLogout());
+    }
+
+    // Admin Modal Events
+    const btnOpenAdminPanel = document.getElementById("btnOpenAdminPanel");
+    if (btnOpenAdminPanel) {
+      btnOpenAdminPanel.addEventListener("click", () => this.openAdminModal());
+    }
+
+    const btnCloseAdmin = document.getElementById("btnCloseAdmin");
+    if (btnCloseAdmin) {
+      btnCloseAdmin.addEventListener("click", () => this.closeAdminModal());
+    }
+
+    const btnRefreshAdminUsers = document.getElementById("btnRefreshAdminUsers");
+    if (btnRefreshAdminUsers) {
+      btnRefreshAdminUsers.addEventListener("click", () => this.loadAdminData());
+    }
+
+    const adminSearchUsers = document.getElementById("adminSearchUsers");
+    if (adminSearchUsers) {
+      adminSearchUsers.addEventListener("input", (e) => this.filterAdminUsers(e.target.value));
+    }
+
     // Header buttons
     document.getElementById("btnOpenApiSettings").addEventListener("click", () => this.openApiSettingsModal());
     document.getElementById("apiKeyStatusBadge").addEventListener("click", () => this.openApiSettingsModal());

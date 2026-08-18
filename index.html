@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Novel Studio - Sáng Tác Phim Ngắn / Zhihu Trung Quốc</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎬</text></svg>">
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- ==================== HEADER ==================== -->
+    <header class="studio-header">
+      <div class="brand">
+        <div class="brand-icon">🎬</div>
+        <div class="brand-title">
+          <h1>AI NOVEL STUDIO</h1>
+          <p>Sáng tác truyện phim ngắn / Zhihu Trung Quốc 10.000 - 20.000 từ chuẩn Audio/TTS</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div id="apiKeyStatusBadge" class="badge badge-purple" style="cursor: pointer;" title="Nhấp để cấu hình API Key">
+          🔑 <span id="keyStatusText">Chưa có API Key</span>
+        </div>
+        <button id="btnOpenLibrary" class="btn btn-secondary btn-sm">
+          📚 Thư Viện (<span id="savedStoryCount">0</span>)
+        </button>
+        <button id="btnOpenApiSettings" class="btn btn-secondary btn-sm">
+          ⚙️ Cài Đặt API
+        </button>
+        <button id="btnNewStory" class="btn btn-primary btn-sm">
+          ✨ Tạo Truyện Mới
+        </button>
+      </div>
+    </header>
+
+    <!-- ==================== STEP WIZARD BAR ==================== -->
+    <nav class="step-indicator-bar" id="stepIndicatorBar">
+      <div class="step-pill active" data-step="1" id="stepPill1">
+        <div class="step-num">1</div>
+        <div class="step-info">
+          <span class="step-name">Chọn Trope & Ý Tưởng</span>
+          <span class="step-desc">AI tạo 3 bản bối cảnh & motif</span>
+        </div>
+      </div>
+      <div class="step-pill" data-step="2" id="stepPill2">
+        <div class="step-num">2</div>
+        <div class="step-info">
+          <span class="step-name">Checkpoint 1: Dàn Ý</span>
+          <span class="step-desc">Duyệt kịch bản & nhân vật</span>
+        </div>
+      </div>
+      <div class="step-pill" data-step="3" id="stepPill3">
+        <div class="step-num">3</div>
+        <div class="step-info">
+          <span class="step-name">Sinh Từng Chương</span>
+          <span class="step-desc">Văn phong phim ngắn vả mặt</span>
+        </div>
+      </div>
+      <div class="step-pill" data-step="4" id="stepPill4">
+        <div class="step-num">4</div>
+        <div class="step-info">
+          <span class="step-name">Checkpoint 2: Đọc & Xuất</span>
+          <span class="step-desc">Làm sạch chuẩn Audio TTS</span>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ==================== STEP 1: TROPE TAG CLOUD & PREMISE ==================== -->
+    <section class="step-view" id="step1View">
+      <div class="studio-card">
+        <div class="card-header-row">
+          <div class="card-title">
+            <span>🏷️</span> Các Trope Chính (Chọn các thẻ phù hợp):
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button id="btnRandomTropes" class="btn btn-secondary btn-sm">
+              🎲 Đổi Trope Ngẫu Nhiên
+            </button>
+            <span class="badge badge-purple">Chọn 3 - 6 thẻ để định hình phong cách</span>
+          </div>
+        </div>
+
+        <!-- Tag Cloud by Categories -->
+        <div class="trope-cloud-container" id="tropeCloudContainer">
+          <!-- Rendered via JS -->
+        </div>
+
+        <!-- Custom User Premise / Opening Situation -->
+        <div class="param-box" style="margin-top: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <label class="param-label" style="margin-bottom: 0;">
+              <span>💡</span> Ý Tưởng Cốt Lõi (Premise) hoặc Tình Huống Mở Đầu:
+            </label>
+            <button id="btnSamplePremise" class="btn btn-secondary btn-sm" style="font-size: 11px;">
+              ✨ Gợi Ý 1 Mẫu Mở Đầu Hay
+            </button>
+          </div>
+          <textarea id="userPremiseInput" class="param-textarea" rows="3" placeholder="Ví dụ: Vào ngày đính hôn thì phát hiện em gái nuôi cấu kết với vị hôn phu chuyển nhượng tài sản; hoặc Tôi trọng sinh về ngày bị ép gả cho đại ma đầu tàn tật của Lục gia... (Hoặc để trống để AI tự tạo hoàn toàn)"></textarea>
+        </div>
+
+        <!-- Length Settings -->
+        <div class="advanced-options-grid" style="margin-top: 20px;">
+          <div class="param-box">
+            <label class="param-label">📑 Số lượng chương (4 - 8 chương)</label>
+            <select id="chapterCountSelect" class="param-select">
+              <option value="4">4 Chương (~6.000 - 8.000 từ)</option>
+              <option value="6" selected>6 Chương (~10.000 - 12.000 từ - Khuyên dùng)</option>
+              <option value="7">7 Chương (~12.000 - 15.000 từ)</option>
+              <option value="8">8 Chương (~15.000 - 20.000 từ - Dài kỳ)</option>
+            </select>
+          </div>
+          <div class="param-box">
+            <label class="param-label">🎯 Mục tiêu từ mỗi chương</label>
+            <select id="wordsPerChapterSelect" class="param-select">
+              <option value="1500">1.500 từ / chương</option>
+              <option value="2000" selected>2.000 từ / chương (Chuẩn phim ngắn)</option>
+              <option value="2500">2.500 từ / chương (Chi tiết sâu)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top: 28px; text-align: center;">
+          <button id="btnGenerateConcepts" class="btn btn-primary btn-lg" style="min-width: 360px;">
+            ⚡ AI Tạo 3 Bản Đề Xuất Cốt Truyện (Bối Cảnh & Motif)
+          </button>
+        </div>
+      </div>
+
+      <!-- ==================== CONCEPT SELECTION SECTION ==================== -->
+      <div class="studio-card" id="conceptsSection" style="display: none; border-color: #ec4899; box-shadow: 0 0 30px rgba(236, 72, 153, 0.15);">
+        <div class="card-header-row">
+          <div class="card-title">
+            <span>🎭</span> Chọn 1 Trong 3 Bản Đề Xuất Bối Cảnh & Motif Của AI:
+          </div>
+          <button id="btnRerollConcepts" class="btn btn-secondary btn-sm">
+            🔄 Sinh Lại 3 Bản Khác
+          </button>
+        </div>
+
+        <div class="concepts-grid" id="conceptsGrid">
+          <!-- Rendered via JS -->
+        </div>
+
+        <div style="margin-top: 24px; text-align: center;">
+          <button id="btnConfirmConceptAndGoToOutline" class="btn btn-success btn-lg" style="min-width: 340px;">
+            🚀 Chọn Bản Này & Tiến Hành Sinh Dàn Ý (Checkpoint 1)
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== STEP 2: CHECKPOINT 1 OUTLINE ==================== -->
+    <section class="step-view" id="step2View" style="display: none;">
+      <div class="studio-card">
+        <div class="card-header-row">
+          <div class="card-title">
+            <span>📋</span> CHECKPOINT 1: Duyệt & Tinh Chỉnh Dàn Ý (Phim Ngắn)
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button id="btnRegenerateOutline" class="btn btn-secondary btn-sm">
+              🔄 Đổi Dàn Ý Khác
+            </button>
+            <button id="btnBackToStep1" class="btn btn-secondary btn-sm">
+              ⬅️ Quay Lại Chọn Concept
+            </button>
+          </div>
+        </div>
+
+        <!-- Story Overview -->
+        <div class="param-box" style="margin-bottom: 20px;">
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div>
+              <label class="param-label">📖 Tựa Đề Truyện Phim Ngắn:</label>
+              <input type="text" id="storyTitleInput" class="param-input" style="font-size: 18px; font-weight: 700; color: #f472b6;">
+            </div>
+            <div>
+              <label class="param-label">🎯 Logline / Tóm Tắt Kịch Tính:</label>
+              <textarea id="storyLoglineInput" class="param-textarea" rows="2"></textarea>
+            </div>
+            <div>
+              <label class="param-label">🏞️ Bối Cảnh & Thế Lực Hào Môn:</label>
+              <textarea id="storySettingDescInput" class="param-textarea" rows="2"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Story Bible (Characters - Chinese Names) -->
+        <div class="card-header-row" style="margin-top: 20px;">
+          <div class="card-title" style="font-size: 16px;">
+            <span>👥</span> Bảng Nhân Vật Cốt Lõi (Tên Hán Việt Chuẩn)
+          </div>
+          <button id="btnAddCharacter" class="btn btn-secondary btn-sm">
+            ➕ Thêm Nhân Vật
+          </button>
+        </div>
+        <div class="story-bible-section" id="storyBibleContainer">
+          <!-- Rendered via JS -->
+        </div>
+
+        <!-- Chapter Outlines -->
+        <div class="card-header-row" style="margin-top: 20px;">
+          <div class="card-title" style="font-size: 16px;">
+            <span>📑</span> Dàn Ý Kịch Bản Từng Chương
+          </div>
+          <span class="badge badge-purple" id="totalChapterBadge">6 Chương</span>
+        </div>
+        <div class="chapter-accordion-list" id="chapterOutlineList">
+          <!-- Rendered via JS -->
+        </div>
+
+        <!-- Action Go To Step 3 -->
+        <div style="margin-top: 32px; text-align: center; display: flex; justify-content: center; gap: 16px;">
+          <button id="btnStartWriting" class="btn btn-success btn-lg" style="min-width: 360px;">
+            ✨ Duyệt Dàn Ý & Bắt Đầu Viết Truyện (Bước 3)
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== STEP 3: LIVE WRITING MONITOR ==================== -->
+    <section class="step-view" id="step3View" style="display: none;">
+      <div class="studio-card">
+        <div class="card-header-row">
+          <div class="card-title">
+            <span>✍️</span> Studio Viết Truyện Phim Ngắn Trực Tiếp
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <div id="throttleIndicator" class="throttle-alert" style="display: none;">
+              ⏳ Nghỉ an toàn <span id="throttleCountdown">3</span>s chống lỗi 429...
+            </div>
+            <button id="btnPauseResumeWriting" class="btn btn-secondary btn-sm">
+              ⏸️ Tạm Dừng
+            </button>
+          </div>
+        </div>
+
+        <!-- Progress Stats -->
+        <div class="progress-stats-panel">
+          <div class="stat-box">
+            <div class="stat-val" id="totalWordsStat">0</div>
+            <div class="stat-lbl">Tổng số từ đã viết</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="completedChaptersStat">0 / 6</div>
+            <div class="stat-lbl">Chương hoàn thành</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="progressPercentStat">0%</div>
+            <div class="stat-lbl">Tiến độ bộ truyện</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="writingStatusStat">Đang khởi tạo</div>
+            <div class="stat-lbl">Trạng thái AI</div>
+          </div>
+        </div>
+
+        <!-- Live Stream Window -->
+        <div class="live-stream-box">
+          <div class="live-stream-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="display: inline-block; width: 10px; height: 10px; background: #ec4899; border-radius: 50%;"></span>
+              <strong id="activeChapterTitle" style="color: #f472b6;">Đang chuẩn bị viết...</strong>
+            </div>
+            <span class="badge badge-purple" id="liveChapterWordCount">0 từ</span>
+          </div>
+          <div class="typing-stream-content" id="typingStreamContent">
+            Nhấn bắt đầu để xem AI viết truyện theo nhịp phim ngắn giật gân, vả mặt sảng khoái...
+          </div>
+        </div>
+
+        <!-- Chapter Monitor List -->
+        <div class="card-header-row">
+          <div class="card-title" style="font-size: 16px;">
+            <span>📑</span> Danh Sách Tiến Độ Từng Chương
+          </div>
+        </div>
+        <div class="chapters-monitor-list" id="chaptersMonitorList">
+          <!-- Rendered via JS -->
+        </div>
+
+        <!-- Final Step Transition Button -->
+        <div style="margin-top: 28px; text-align: center;">
+          <button id="btnGoToStep4" class="btn btn-primary btn-lg" style="display: none;">
+            🎉 Truyện Đã Hoàn Tất! Chuyển Sang Bước 4 (Đọc & Xuất Audio-Ready)
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== STEP 4: CHECKPOINT 2 READER & EXPORT ==================== -->
+    <section class="step-view" id="step4View" style="display: none;">
+      
+      <!-- Toolbar Controls -->
+      <div class="reader-toolbar">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-weight: 700; font-size: 15px;">Chế Độ Đọc:</span>
+          <div class="btn-group" style="display: flex; gap: 6px;">
+            <button class="btn btn-secondary btn-sm active" data-theme="dark" id="btnThemeDark">🌙 Tối</button>
+            <button class="btn btn-secondary btn-sm" data-theme="sepia" id="btnThemeSepia">📜 Giấy Cũ</button>
+            <button class="btn btn-secondary btn-sm" data-theme="light" id="btnThemeLight">☀️ Sáng</button>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <label style="font-size: 13px;">Cỡ chữ:</label>
+          <input type="range" id="readerFontSizeRange" min="14" max="24" value="17" style="width: 100px; accent-color: #ec4899;">
+          <span id="fontSizeDisplay" style="font-size: 13px; min-width: 32px;">17px</span>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+          <button id="btnCleanForAudio" class="btn btn-warning btn-sm" title="Tự động chuyển mọi số thành chữ tiếng Việt và xóa markdown thừa">
+            🧹 Chuẩn Hóa Text Cho Audio / TTS
+          </button>
+          <button id="btnRestoreOriginalText" class="btn btn-secondary btn-sm" style="display: none;">
+            ↩️ Trả Về Bản Gốc
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Reader View -->
+      <div class="reader-container" id="readerContainer">
+        <div id="readerHeaderBlock" style="text-align: center; margin-bottom: 30px;">
+          <h1 id="readerStoryTitle" style="font-family: var(--font-heading); font-size: 28px; margin-bottom: 8px; color: #f472b6;">Tựa Đề Truyện</h1>
+          <p id="readerStoryLogline" style="font-style: italic; opacity: 0.8;"></p>
+          <div style="margin-top: 12px; font-size: 13px; opacity: 0.7;">
+            <span id="readerTotalWords">0 từ</span> • <span id="readerEstReadingTime">0 phút đọc</span>
+          </div>
+        </div>
+
+        <div class="reader-body" id="readerBody">
+          <!-- Rendered chapters via JS -->
+        </div>
+      </div>
+
+      <!-- Export Toolbox Card -->
+      <div class="studio-card">
+        <div class="card-header-row">
+          <div class="card-title">
+            <span>💾</span> Xuất Bản & Tải Về Sẵn Sàng Cho Audio
+          </div>
+        </div>
+
+        <div class="export-grid">
+          <div class="export-card">
+            <div style="font-size: 24px;">🎙️</div>
+            <strong>File .TXT Chuẩn Audio (Khuyên dùng)</strong>
+            <p style="font-size: 12px; color: var(--text-muted);">
+              Đã làm sạch số, xóa toàn bộ markdown. Dán trực tiếp vào CapCut, Vbee, Edge-TTS, ElevenLabs.
+            </p>
+            <button id="btnDownloadAudioTxt" class="btn btn-success btn-sm">
+              📥 Tải File .TXT Chuẩn Audio
+            </button>
+          </div>
+
+          <div class="export-card">
+            <div style="font-size: 24px;">📄</div>
+            <strong>File .TXT / .MD Toàn Bộ Truyện</strong>
+            <p style="font-size: 12px; color: var(--text-muted);">
+              Bao gồm đầy đủ Tựa đề, Dàn ý, Bảng nhân vật và toàn bộ các chương đã viết.
+            </p>
+            <button id="btnDownloadFullMarkdown" class="btn btn-secondary btn-sm">
+              📥 Tải File .MD Bản Đầy Đủ
+            </button>
+          </div>
+
+          <div class="export-card">
+            <div style="font-size: 24px;">📦</div>
+            <strong>File Dự Án (.JSON)</strong>
+            <p style="font-size: 12px; color: var(--text-muted);">
+              Lưu toàn bộ dự án để có thể tải lại vào Thư viện studio bất kỳ lúc nào trên máy khác.
+            </p>
+            <button id="btnDownloadProjectJson" class="btn btn-secondary btn-sm">
+              📥 Tải File JSON Dự Án
+            </button>
+          </div>
+
+          <div class="export-card">
+            <div style="font-size: 24px;">📋</div>
+            <strong>Sao Chép Nhanh</strong>
+            <p style="font-size: 12px; color: var(--text-muted);">
+              Copy toàn bộ nội dung văn bản sạch vào bộ nhớ đệm (Clipboard) để dán nhanh.
+            </p>
+            <button id="btnCopyCleanText" class="btn btn-primary btn-sm">
+              📋 Sao Chép Toàn Bộ Text
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ==================== MODAL: API SETTINGS ==================== -->
+  <div class="modal-backdrop" id="apiSettingsModal">
+    <div class="modal-window">
+      <div class="modal-header">
+        <div class="modal-title">⚙️ Cài Đặt Gemini API (Free Tier)</div>
+        <button class="modal-close" id="btnCloseApiSettings">&times;</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div>
+          <label class="param-label">🔑 Gemini API Keys (Hỗ trợ nhập nhiều Key - mỗi dòng 1 key):</label>
+          <textarea id="apiKeysInput" class="param-textarea" rows="4" placeholder="AIzaSy... (Dán API Key từ Google AI Studio tại aistudio.google.com)&#10;Có thể dán nhiều key để tự động xoay tua khi chạm hạn mức 15 RPM"></textarea>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+            <span style="font-size: 11px; color: var(--text-muted);">Hệ thống tự động xoay tua key và retry backoff khi gặp lỗi 429.</span>
+            <button id="btnTestApiKey" class="btn btn-secondary btn-sm">🔍 Test Kết Nối</button>
+          </div>
+          <div id="apiTestResult" style="font-size: 12px; margin-top: 6px;"></div>
+        </div>
+
+        <div>
+          <label class="param-label">🤖 Chọn Model Gemini:</label>
+          <select id="modelSelect" class="param-select">
+            <option value="gemini-3.6-flash" selected>gemini-3.6-flash (Khuyên dùng - Cực sắc sảo cho phim ngắn / Zhihu, 5 RPM / 20 RPD)</option>
+            <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Hạn mức cao: 15 RPM / 500 lượt/ngày - Siêu nhanh & bền bỉ)</option>
+            <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (Hạn mức cao: 15 RPM / 500 lượt/ngày)</option>
+            <option value="gemini-3.7-flash">gemini-3.7-flash (Thế hệ mới nhất 3.7, 5 RPM / 20 RPD)</option>
+            <option value="gemini-3.5-flash">gemini-3.5-flash (5 RPM / 20 RPD)</option>
+            <option value="gemini-3-flash">gemini-3-flash (5 RPM / 20 RPD)</option>
+            <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (10 RPM / 20 RPD)</option>
+            <option value="gemini-2.0-flash">gemini-2.0-flash (Tốc độ cao)</option>
+            <option value="gemini-1.5-flash">gemini-1.5-flash (Ổn định 15 RPM)</option>
+          </select>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <label class="param-label">⏳ Delay giữa các chương (ms):</label>
+            <input type="number" id="throttleDelayInput" class="param-input" value="3500" min="1000" max="10000" step="500">
+            <span style="font-size: 11px; color: var(--text-muted);">Nghỉ 3.5s giữa các chương giúp tránh lỗi 429.</span>
+          </div>
+          <div>
+            <label class="param-label">🌡️ Sáng tạo chương (Temp):</label>
+            <input type="number" id="chapterTempInput" class="param-input" value="0.8" min="0.1" max="1.0" step="0.05">
+          </div>
+        </div>
+
+        <div style="text-align: right; margin-top: 14px;">
+          <button id="btnSaveApiSettings" class="btn btn-primary">Lưu Cấu Hình</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: STORY LIBRARY ==================== -->
+  <div class="modal-backdrop" id="storyLibraryModal">
+    <div class="modal-window" style="max-width: 800px;">
+      <div class="modal-header">
+        <div class="modal-title">📚 Thư Viện Truyện Đã Sáng Tác</div>
+        <button class="modal-close" id="btnCloseStoryLibrary">&times;</button>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <input type="text" id="librarySearchInput" class="param-input" placeholder="🔍 Tìm kiếm theo tên truyện hoặc trope...">
+      </div>
+      <div id="libraryListContainer" style="display: flex; flex-direction: column; gap: 12px; max-height: 55vh; overflow-y: auto;">
+        <!-- Rendered via JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== TOAST CONTAINER ==================== -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Main App Script -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

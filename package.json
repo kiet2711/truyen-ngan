@@ -1,0 +1,12 @@
+{
+  "name": "ai-novel-studio",
+  "version": "1.0.0",
+  "description": "Hệ thống sáng tác truyện ngắn 10.000 - 20.000 từ bằng Gemini Free API sẵn sàng cho Audio / TTS",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": ["gemini", "ai-story", "novel-generator", "tts", "audio-stories"],
+  "author": "",
+  "license": "MIT"
+}

@@ -147,6 +147,8 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 /* ==================== STEP WIZARD BAR ==================== */
@@ -1650,6 +1652,78 @@ body {
 .text-danger { color: var(--accent-rose) !important; }
 .text-pink { color: var(--accent-pink) !important; }
 
+/* Audio Portal Navigation & Card Styles */
+.btn-audio-nav {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(16, 185, 129, 0.22));
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.18);
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-audio-nav:hover {
+  background: linear-gradient(135deg, #06b6d4, #10b981);
+  color: #ffffff;
+  border-color: #10b981;
+  box-shadow: 0 0 22px rgba(16, 185, 129, 0.5);
+  transform: translateY(-2px);
+}
+
+.audio-pulse-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background-color: #10b981;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #10b981;
+  animation: audioPulseAnim 1.8s infinite ease-in-out;
+}
+
+@keyframes audioPulseAnim {
+  0%, 100% {
+    transform: scale(0.85);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 1;
+    box-shadow: 0 0 12px #34d399;
+  }
+}
+
+.card-audio-portal {
+  border-color: rgba(6, 182, 212, 0.4);
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.1), var(--bg-surface));
+  position: relative;
+  overflow: hidden;
+}
+
+.card-audio-portal:hover {
+  border-color: #06b6d4;
+  box-shadow: 0 8px 26px rgba(6, 182, 212, 0.25);
+  transform: translateY(-2px);
+}
+
+.btn-audio-portal {
+  background: linear-gradient(135deg, #06b6d4, #059669);
+  color: white;
+  box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.btn-audio-portal:hover {
+  background: linear-gradient(135deg, #22d3ee, #10b981);
+  box-shadow: 0 6px 22px rgba(6, 182, 212, 0.5);
+  transform: translateY(-2px);
+  color: white;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .step-indicator-bar {
@@ -1664,5 +1738,15 @@ body {
   .admin-stats-grid {
     grid-template-columns: 1fr 1fr;
   }
+  .studio-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
+
 

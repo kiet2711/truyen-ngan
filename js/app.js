@@ -64,7 +64,7 @@ class NovelStudioApp {
   async updateSavedCount() {
     const stories = await storageService.getAllStories();
     const count = stories.length;
-    const el = document.getElementById("savedStoriesCount");
+    const el = document.getElementById("savedStoryCount") || document.getElementById("savedStoriesCount");
     if (el) el.textContent = count;
   }
 

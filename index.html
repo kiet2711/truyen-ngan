@@ -350,50 +350,75 @@
     <!-- ==================== STEP 4: CHECKPOINT 2 READER & EXPORT ==================== -->
     <section class="step-view" id="step4View" style="display: none;">
       
-      <!-- Toolbar Controls -->
+      <!-- Top Sticky Action & Toolbar -->
       <div class="reader-toolbar">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <span style="font-weight: 700; font-size: 15px;">Chế Độ Đọc:</span>
+        <div class="reader-toolbar-group">
+          <span style="font-weight: 700; font-size: 14px;">🎨 Giao Diện:</span>
           <div class="btn-group" style="display: flex; gap: 6px;">
             <button class="btn btn-secondary btn-sm active" data-theme="dark" id="btnThemeDark">🌙 Tối</button>
             <button class="btn btn-secondary btn-sm" data-theme="sepia" id="btnThemeSepia">📜 Giấy Cũ</button>
             <button class="btn btn-secondary btn-sm" data-theme="light" id="btnThemeLight">☀️ Sáng</button>
           </div>
+
+          <div style="display: flex; align-items: center; gap: 8px; margin-left: 6px;">
+            <label style="font-size: 13px; color: var(--text-muted);">Cỡ chữ:</label>
+            <input type="range" id="readerFontSizeRange" min="14" max="24" value="17" style="width: 80px; accent-color: #ec4899;">
+            <span id="fontSizeDisplay" style="font-size: 13px; min-width: 30px; font-weight: 600;">17px</span>
+          </div>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <label style="font-size: 13px;">Cỡ chữ:</label>
-          <input type="range" id="readerFontSizeRange" min="14" max="24" value="17" style="width: 100px; accent-color: #ec4899;">
-          <span id="fontSizeDisplay" style="font-size: 13px; min-width: 32px;">17px</span>
-        </div>
-
-        <div style="display: flex; gap: 10px;">
+        <div class="reader-toolbar-actions">
           <button id="btnCleanForAudio" class="btn btn-warning btn-sm" title="Tự động chuyển mọi số thành chữ tiếng Việt và xóa markdown thừa">
-            🧹 Chuẩn Hóa Text Cho Audio / TTS
+            🧹 Chuẩn Hóa Cho Audio / TTS
           </button>
           <button id="btnRestoreOriginalText" class="btn btn-secondary btn-sm" style="display: none;">
             ↩️ Trả Về Bản Gốc
           </button>
+
+          <!-- Quick Action Buttons right at the top bar -->
+          <button id="btnQuickCopyCleanText" class="btn btn-primary btn-sm" title="Sao chép toàn bộ văn bản Audio vào Clipboard">
+            📋 Sao Chép (Audio)
+          </button>
+          <button id="btnQuickDownloadAudioTxt" class="btn btn-success btn-sm" title="Tải file .txt chuẩn Audio/TTS">
+            📥 Tải .TXT Audio
+          </button>
         </div>
       </div>
 
-      <!-- Main Reader View -->
+      <!-- Main Reader View with Fixed Height Box & Internal Scroll -->
       <div class="reader-container" id="readerContainer">
-        <div id="readerHeaderBlock" style="text-align: center; margin-bottom: 30px;">
-          <h1 id="readerStoryTitle" style="font-family: var(--font-heading); font-size: 28px; margin-bottom: 8px; color: #f472b6;">Tựa Đề Truyện</h1>
-          <p id="readerStoryLogline" style="font-style: italic; opacity: 0.8;"></p>
-          <div style="margin-top: 12px; font-size: 13px; opacity: 0.7;">
-            <span id="readerTotalWords">0 từ</span> • <span id="readerEstReadingTime">0 phút đọc</span>
+        <div class="reader-container-header" id="readerHeaderBlock">
+          <div class="reader-header-main">
+            <h1 id="readerStoryTitle" class="reader-title">Tựa Đề Truyện</h1>
+            <p id="readerStoryLogline" class="reader-logline"></p>
+            <div class="reader-meta-pills">
+              <span class="meta-pill" id="readerTotalWords">0 từ</span>
+              <span class="meta-pill" id="readerEstReadingTime">~0 phút đọc</span>
+              <span class="meta-pill badge-audio-status" id="readerAudioStatusBadge">✨ Audio-Ready</span>
+            </div>
+          </div>
+
+          <div class="reader-header-nav">
+            <div class="chapter-quick-nav">
+              <span style="font-size: 12px; color: var(--text-muted); font-weight: 600;">📑 Nhảy tới:</span>
+              <select id="readerChapterSelect" class="reader-chapter-dropdown">
+                <option value="">-- Chọn chương --</option>
+              </select>
+            </div>
+            <button id="btnReaderScrollTop" class="btn btn-secondary btn-sm" title="Cuộn lên đầu khung truyện">
+              ⬆️ Lên đầu
+            </button>
           </div>
         </div>
 
+        <!-- Scrollable Chapter Content -->
         <div class="reader-body" id="readerBody">
           <!-- Rendered chapters via JS -->
         </div>
       </div>
 
       <!-- Export Toolbox Card -->
-      <div class="studio-card">
+      <div class="studio-card export-section-card">
         <div class="card-header-row">
           <div class="card-title">
             <span>💾</span> Xuất Bản & Tải Về Sẵn Sàng Cho Audio
@@ -401,8 +426,8 @@
         </div>
 
         <div class="export-grid">
-          <div class="export-card">
-            <div style="font-size: 24px;">🎙️</div>
+          <div class="export-card card-audio-export">
+            <div style="font-size: 26px;">🎙️</div>
             <strong>File .TXT Chuẩn Audio (Khuyên dùng)</strong>
             <p style="font-size: 12px; color: var(--text-muted);">
               Đã làm sạch số, xóa toàn bộ markdown. Dán trực tiếp vào CapCut, Vbee, Edge-TTS, ElevenLabs.
@@ -413,7 +438,18 @@
           </div>
 
           <div class="export-card">
-            <div style="font-size: 24px;">📄</div>
+            <div style="font-size: 26px;">📋</div>
+            <strong>Sao Chép Nhanh Vào Clipboard</strong>
+            <p style="font-size: 12px; color: var(--text-muted);">
+              Copy toàn bộ nội dung văn bản sạch vào bộ nhớ đệm (Clipboard) để dán nhanh vào phần mềm Audio.
+            </p>
+            <button id="btnCopyCleanText" class="btn btn-primary btn-sm">
+              📋 Sao Chép Toàn Bộ Text
+            </button>
+          </div>
+
+          <div class="export-card">
+            <div style="font-size: 26px;">📄</div>
             <strong>File .TXT / .MD Toàn Bộ Truyện</strong>
             <p style="font-size: 12px; color: var(--text-muted);">
               Bao gồm đầy đủ Tựa đề, Dàn ý, Bảng nhân vật và toàn bộ các chương đã viết.
@@ -424,24 +460,13 @@
           </div>
 
           <div class="export-card">
-            <div style="font-size: 24px;">📦</div>
+            <div style="font-size: 26px;">📦</div>
             <strong>File Dự Án (.JSON)</strong>
             <p style="font-size: 12px; color: var(--text-muted);">
               Lưu toàn bộ dự án để có thể tải lại vào Thư viện studio bất kỳ lúc nào trên máy khác.
             </p>
             <button id="btnDownloadProjectJson" class="btn btn-secondary btn-sm">
               📥 Tải File JSON Dự Án
-            </button>
-          </div>
-
-          <div class="export-card">
-            <div style="font-size: 24px;">📋</div>
-            <strong>Sao Chép Nhanh</strong>
-            <p style="font-size: 12px; color: var(--text-muted);">
-              Copy toàn bộ nội dung văn bản sạch vào bộ nhớ đệm (Clipboard) để dán nhanh.
-            </p>
-            <button id="btnCopyCleanText" class="btn btn-primary btn-sm">
-              📋 Sao Chép Toàn Bộ Text
             </button>
           </div>
         </div>

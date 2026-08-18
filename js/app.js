@@ -1261,6 +1261,18 @@ class NovelStudioApp {
     document.getElementById("readerTotalWords").textContent = `${totalWords.toLocaleString()} từ`;
     document.getElementById("readerEstReadingTime").textContent = `~${readingMins} phút đọc`;
 
+    // Populate Chapter Quick Nav Dropdown
+    const chapterSelect = document.getElementById("readerChapterSelect");
+    if (chapterSelect) {
+      chapterSelect.innerHTML = `<option value="">-- Chọn chương (${this.currentStory.chapters.length} chương) --</option>`;
+      this.currentStory.chapters.forEach(ch => {
+        const opt = document.createElement("option");
+        opt.value = `readerChapter_${ch.index}`;
+        opt.textContent = `Chương ${ch.index}: ${ch.title || ""}`;
+        chapterSelect.appendChild(opt);
+      });
+    }
+
     this.renderReaderChaptersContent();
   }
 
@@ -1271,6 +1283,7 @@ class NovelStudioApp {
     this.currentStory.chapters.forEach(ch => {
       const chBlock = document.createElement("div");
       chBlock.className = "reader-chapter-block";
+      chBlock.id = `readerChapter_${ch.index}`;
 
       let textToRender = ch.content || "(Chương này chưa có nội dung)";
       if (this.isAudioCleaned) {
@@ -1595,28 +1608,57 @@ class NovelStudioApp {
       document.documentElement.style.setProperty("--reader-size", `${size}px`);
     });
 
-    // Download buttons
-    document.getElementById("btnDownloadAudioTxt").addEventListener("click", () => {
+    // Download & Copy Handlers
+    const handleDownloadAudioTxt = () => {
       const safeTitle = (this.currentStory?.title || "truyen_phim_ngan").replace(/[^a-zA-Z0-9_-]/g, "_");
       this.downloadFile(`${safeTitle}_audio_clean.txt`, this.getCleanAudioTxt());
-    });
+    };
 
-    document.getElementById("btnDownloadFullMarkdown").addEventListener("click", () => {
-      const safeTitle = (this.currentStory?.title || "truyen_phim_ngan").replace(/[^a-zA-Z0-9_-]/g, "_");
-      this.downloadFile(`${safeTitle}_full.md`, this.getFullMarkdown());
-    });
-
-    document.getElementById("btnDownloadProjectJson").addEventListener("click", () => {
-      const safeTitle = (this.currentStory?.title || "truyen_phim_ngan").replace(/[^a-zA-Z0-9_-]/g, "_");
-      this.downloadFile(`${safeTitle}_project.json`, JSON.stringify(this.currentStory, null, 2), "application/json");
-    });
-
-    document.getElementById("btnCopyCleanText").addEventListener("click", () => {
+    const handleCopyCleanText = () => {
       const text = this.getCleanAudioTxt();
       navigator.clipboard.writeText(text).then(() => {
         this.showToast("Đã sao chép toàn bộ văn bản chuẩn Audio vào Clipboard!", "success");
       });
+    };
+
+    document.getElementById("btnDownloadAudioTxt")?.addEventListener("click", handleDownloadAudioTxt);
+    document.getElementById("btnQuickDownloadAudioTxt")?.addEventListener("click", handleDownloadAudioTxt);
+
+    document.getElementById("btnCopyCleanText")?.addEventListener("click", handleCopyCleanText);
+    document.getElementById("btnQuickCopyCleanText")?.addEventListener("click", handleCopyCleanText);
+
+    document.getElementById("btnDownloadFullMarkdown")?.addEventListener("click", () => {
+      const safeTitle = (this.currentStory?.title || "truyen_phim_ngan").replace(/[^a-zA-Z0-9_-]/g, "_");
+      this.downloadFile(`${safeTitle}_full.md`, this.getFullMarkdown());
     });
+
+    document.getElementById("btnDownloadProjectJson")?.addEventListener("click", () => {
+      const safeTitle = (this.currentStory?.title || "truyen_phim_ngan").replace(/[^a-zA-Z0-9_-]/g, "_");
+      this.downloadFile(`${safeTitle}_project.json`, JSON.stringify(this.currentStory, null, 2), "application/json");
+    });
+
+    // Chapter Navigation Dropdown & Scroll Top
+    const chapterSelect = document.getElementById("readerChapterSelect");
+    if (chapterSelect) {
+      chapterSelect.addEventListener("change", (e) => {
+        const targetId = e.target.value;
+        if (!targetId) return;
+        const targetEl = document.getElementById(targetId);
+        const readerBody = document.getElementById("readerBody");
+        if (targetEl && readerBody) {
+          const topOffset = targetEl.offsetTop - readerBody.offsetTop;
+          readerBody.scrollTo({ top: topOffset, behavior: "smooth" });
+        }
+      });
+    }
+
+    const btnReaderScrollTop = document.getElementById("btnReaderScrollTop");
+    if (btnReaderScrollTop) {
+      btnReaderScrollTop.addEventListener("click", () => {
+        const readerBody = document.getElementById("readerBody");
+        if (readerBody) readerBody.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    }
 
     // Step Indicator Click
     for (let i = 1; i <= 4; i++) {

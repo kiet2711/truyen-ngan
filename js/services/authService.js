@@ -181,6 +181,48 @@ class AuthService {
     return null;
   }
 
+  // ==================== USER API SETTINGS (Gemini Keys & Config) ====================
+
+  async fetchUserApiSettings() {
+    if (!this.isLoggedIn()) return null;
+
+    try {
+      const res = await fetch("/api/user/api-settings", {
+        headers: { "Authorization": `Bearer ${this.token}` }
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn("Fetch API settings error:", e);
+    }
+    return null;
+  }
+
+  async saveUserApiSettings(apiKeys, settings) {
+    if (!this.isLoggedIn()) return null;
+
+    try {
+      const res = await fetch("/api/user/api-settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${this.token}`
+        },
+        body: JSON.stringify({
+          api_keys: apiKeys,
+          settings: settings
+        })
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn("Save API settings error:", e);
+    }
+    return null;
+  }
+
   // ==================== ADMIN API CALLS ====================
 
   async adminGetUsers() {

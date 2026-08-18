@@ -293,9 +293,30 @@ class NovelStudioApp {
           storageService.saveCustomTags(this.customTags);
           this.renderTropeCloud();
         }
+
+        // Load cloud API settings & keys
+        await this.syncUserApiSettingsFromCloud();
       }
     } catch (err) {
       this.showToast(err.message, "error");
+    }
+  }
+
+  async syncUserApiSettingsFromCloud() {
+    if (!authService.isLoggedIn()) return;
+    try {
+      const cloudData = await authService.fetchUserApiSettings();
+      if (cloudData) {
+        if (Array.isArray(cloudData.api_keys) && cloudData.api_keys.length > 0) {
+          storageService.saveApiKeys(cloudData.api_keys);
+        }
+        if (cloudData.settings && typeof cloudData.settings === 'object' && Object.keys(cloudData.settings).length > 0) {
+          storageService.saveSettings(cloudData.settings);
+        }
+        this.updateApiKeyStatus();
+      }
+    } catch (e) {
+      console.warn("Sync API settings error:", e);
     }
   }
 
@@ -407,6 +428,9 @@ class NovelStudioApp {
         this.renderTropeCloud();
       }
 
+      // Sync cloud API keys & settings
+      await this.syncUserApiSettingsFromCloud();
+
       this.closeAuthModal();
     } catch (err) {
       alertBox.textContent = err.message;
@@ -444,6 +468,13 @@ class NovelStudioApp {
       // Save any existing local tags to user's new account
       if (this.customTags.length > 0) {
         await authService.saveUserTags(this.customTags);
+      }
+
+      // Save existing local API settings to user's new account
+      const currentKeys = storageService.getApiKeys();
+      const currentSettings = storageService.getSettings();
+      if (currentKeys.length > 0) {
+        await authService.saveUserApiSettings(currentKeys, currentSettings);
       }
 
       this.closeAuthModal();
@@ -1414,7 +1445,7 @@ class NovelStudioApp {
     document.getElementById("apiSettingsModal").classList.remove("open");
   }
 
-  saveApiSettings() {
+  async saveApiSettings() {
     const rawKeys = document.getElementById("apiKeysInput").value;
     const keys = rawKeys.split("\n").map(k => k.trim()).filter(Boolean);
     storageService.saveApiKeys(keys);
@@ -1426,9 +1457,15 @@ class NovelStudioApp {
     };
     storageService.saveSettings(settings);
 
+    if (authService.isLoggedIn()) {
+      await authService.saveUserApiSettings(keys, settings);
+      this.showToast("Đã lưu và đồng bộ API Key lên tài khoản Neon Cloud! ☁️", "success");
+    } else {
+      this.showToast("Đã lưu cấu hình API thành công!", "success");
+    }
+
     this.updateApiKeyStatus();
     this.closeApiSettingsModal();
-    this.showToast("Đã lưu cấu hình API thành công!", "success");
   }
 
   async testApiKeyConnection() {

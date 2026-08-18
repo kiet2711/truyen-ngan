@@ -161,6 +161,30 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { success: true, tags: updatedTags });
       }
 
+      // 9. User API Settings: GET
+      if (pathname === '/api/user/api-settings' && req.method === 'GET') {
+        const user = await getAuthUser(req);
+        if (!user) {
+          return sendJson(res, 401, { error: "Vui lòng đăng nhập để lấy cấu hình API" });
+        }
+        const data = await auth.getUserApiSettings(user.id);
+        return sendJson(res, 200, { success: true, ...data });
+      }
+
+      // 10. User API Settings: POST
+      if (pathname === '/api/user/api-settings' && req.method === 'POST') {
+        const user = await getAuthUser(req);
+        if (!user) {
+          return sendJson(res, 401, { error: "Vui lòng đăng nhập để lưu cấu hình API" });
+        }
+        const body = await parseBody(req);
+        const saved = await auth.saveUserApiSettings(user.id, {
+          api_keys: body.api_keys || body.apiKeys,
+          settings: body.settings
+        });
+        return sendJson(res, 200, { success: true, ...saved });
+      }
+
       // ==================== ADMIN ENDPOINTS (Role = 'admin' Required) ====================
       if (pathname.startsWith('/api/admin/')) {
         const user = await getAuthUser(req);

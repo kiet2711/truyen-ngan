@@ -435,6 +435,68 @@ async function getAdminStats() {
   };
 }
 
+// ==================== USER API SETTINGS (Gemini Keys & Config) ====================
+
+async function getUserApiSettings(userId) {
+  if (db.isPostgres && db.pool) {
+    const res = await db.pool.query(
+      'SELECT api_keys, settings FROM user_api_settings WHERE user_id = $1 LIMIT 1',
+      [userId]
+    );
+    if (res.rows.length === 0) {
+      return { api_keys: [], settings: {} };
+    }
+    return {
+      api_keys: res.rows[0].api_keys || [],
+      settings: res.rows[0].settings || {}
+    };
+  } else {
+    const data = db.getFallbackData();
+    if (!data.user_api_settings) data.user_api_settings = [];
+    const found = data.user_api_settings.find(s => s.user_id === userId);
+    return {
+      api_keys: found ? (found.api_keys || []) : [],
+      settings: found ? (found.settings || {}) : {}
+    };
+  }
+}
+
+async function saveUserApiSettings(userId, { api_keys, settings }) {
+  const cleanKeys = (Array.isArray(api_keys) ? api_keys : [])
+    .map(k => (typeof k === 'string' ? k.trim() : ''))
+    .filter(Boolean);
+
+  const cleanSettings = typeof settings === 'object' && settings !== null ? settings : {};
+
+  if (db.isPostgres && db.pool) {
+    await db.pool.query(
+      `INSERT INTO user_api_settings (user_id, api_keys, settings, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (user_id) 
+       DO UPDATE SET api_keys = $2, settings = $3, updated_at = NOW()`,
+      [userId, cleanKeys, JSON.stringify(cleanSettings)]
+    );
+  } else {
+    const data = db.getFallbackData();
+    if (!data.user_api_settings) data.user_api_settings = [];
+    const idx = data.user_api_settings.findIndex(s => s.user_id === userId);
+    const item = {
+      user_id: userId,
+      api_keys: cleanKeys,
+      settings: cleanSettings,
+      updated_at: new Date().toISOString()
+    };
+    if (idx >= 0) {
+      data.user_api_settings[idx] = item;
+    } else {
+      data.user_api_settings.push(item);
+    }
+    db.saveFallbackData(data);
+  }
+
+  return { api_keys: cleanKeys, settings: cleanSettings };
+}
+
 module.exports = {
   registerUser,
   loginUser,
@@ -443,9 +505,12 @@ module.exports = {
   getUserTags,
   addUserTags,
   removeUserTag,
+  getUserApiSettings,
+  saveUserApiSettings,
   getAllUsers,
   setUserBanStatus,
   setUserRole,
   deleteUser,
   getAdminStats
 };
+

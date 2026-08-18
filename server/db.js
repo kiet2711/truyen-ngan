@@ -166,6 +166,13 @@ async function runPostgresMigrations() {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
       expires_at TIMESTAMP WITH TIME ZONE NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS user_api_settings (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      api_keys TEXT[] DEFAULT '{}',
+      settings JSONB DEFAULT '{}',
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
   `;
   await pool.query(query);
 

@@ -509,8 +509,12 @@
         <div class="modal-title">📚 Thư Viện Truyện Đã Sáng Tác</div>
         <button class="modal-close" id="btnCloseStoryLibrary">&times;</button>
       </div>
-      <div style="margin-bottom: 16px;">
-        <input type="text" id="librarySearchInput" class="param-input" placeholder="🔍 Tìm kiếm theo tên truyện hoặc trope...">
+      <!-- Library Toolbar -->
+      <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 16px;">
+        <input type="text" id="librarySearchInput" class="param-input" placeholder="🔍 Tìm kiếm theo tên truyện hoặc trope..." style="flex: 1;">
+        <button id="btnClearAllStories" class="btn btn-secondary btn-sm" style="color: #f87171; border-color: rgba(239, 68, 68, 0.4); white-space: nowrap;">
+          🗑️ Xóa Tất Cả
+        </button>
       </div>
       <div id="libraryListContainer" style="display: flex; flex-direction: column; gap: 12px; max-height: 55vh; overflow-y: auto;">
         <!-- Rendered via JS -->

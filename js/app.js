@@ -1288,6 +1288,23 @@ class NovelStudioApp {
     document.getElementById("btnCloseStoryLibrary").addEventListener("click", () => this.closeStoryLibraryModal());
     document.getElementById("librarySearchInput").addEventListener("input", (e) => this.filterLibraryStories(e.target.value));
 
+    const btnClearAll = document.getElementById("btnClearAllStories");
+    if (btnClearAll) {
+      btnClearAll.addEventListener("click", async () => {
+        const stories = await storageService.getAllStories();
+        if (stories.length === 0) {
+          this.showToast("Thư viện hiện đang trống!", "info");
+          return;
+        }
+        if (confirm(`CẢNH BÁO: Bạn có chắc chắn muốn XÓA TẤT CẢ ${stories.length} bộ truyện trong thư viện để giải phóng dung lượng không?`)) {
+          await storageService.clearAllStories();
+          await this.updateSavedCount();
+          this.openStoryLibraryModal();
+          this.showToast("Đã xóa toàn bộ truyện khỏi thư viện!", "success");
+        }
+      });
+    }
+
     document.getElementById("btnNewStory").addEventListener("click", () => {
       if (confirm("Bạn có muốn bắt đầu tạo một bộ truyện mới không?")) {
         this.currentStory = null;

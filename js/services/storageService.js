@@ -207,6 +207,20 @@ class StorageService {
     return true;
   }
 
+  async clearAllStories() {
+    if (this.db) {
+      await new Promise((resolve) => {
+        const tx = this.db.transaction([STORE_STORIES], "readwrite");
+        const store = tx.objectStore(STORE_STORIES);
+        const req = store.clear();
+        req.onsuccess = () => resolve(true);
+        req.onerror = () => resolve(false);
+      });
+    }
+    localStorage.removeItem("novel_studio_stories_backup");
+    return true;
+  }
+
   // ==================== LOCALSTORAGE FALLBACK ====================
 
   _saveToLocalStorageFallback(story) {

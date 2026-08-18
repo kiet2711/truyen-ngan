@@ -75,11 +75,39 @@
           <div class="card-title">
             <span>🏷️</span> Các Trope Chính (Chọn các thẻ phù hợp):
           </div>
-          <div style="display: flex; gap: 10px;">
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <button id="btnToggleAddTag" class="btn btn-secondary btn-sm btn-glow-pink">
+              ➕ Tự Nhập Thẻ Mới
+            </button>
             <button id="btnRandomTropes" class="btn btn-secondary btn-sm">
               🎲 Đổi Trope Ngẫu Nhiên
             </button>
             <span class="badge badge-purple">Chọn 3 - 6 thẻ để định hình phong cách</span>
+          </div>
+        </div>
+
+        <!-- Quick Add Custom Tag Panel -->
+        <div id="customTagInputPanel" class="custom-tag-panel" style="display: none;">
+          <div class="custom-tag-panel-inner">
+            <div class="custom-tag-input-wrap">
+              <span class="custom-tag-icon">✨</span>
+              <input 
+                type="text" 
+                id="customTagInput" 
+                class="custom-tag-field" 
+                placeholder="Nhập tên thẻ trope muốn thêm (vd: Song khiết, Cung đấu hài, Cưới chạy bầu...)..."
+                maxlength="50"
+              />
+              <button id="btnAddCustomTag" class="btn btn-primary btn-sm">
+                ➕ Thêm Thẻ
+              </button>
+              <button id="btnCloseAddTag" class="btn btn-secondary btn-sm" title="Đóng khung nhập">
+                ✕
+              </button>
+            </div>
+            <div class="custom-tag-tip">
+              💡 <em>Mẹo:</em> Có thể nhập nhiều thẻ cùng lúc cách nhau bằng dấu phẩy (<code>,</code>). Nhấn <strong>Enter</strong> để thêm nhanh.
+            </div>
           </div>
         </div>
 

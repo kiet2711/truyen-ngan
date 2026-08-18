@@ -88,6 +88,29 @@ class StorageService {
     localStorage.setItem("novel_studio_settings", JSON.stringify(settings));
   }
 
+  // ==================== CUSTOM USER TROPES / TAGS ====================
+
+  getCustomTags() {
+    try {
+      const stored = localStorage.getItem("novel_studio_custom_tags");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  saveCustomTags(tagsArray) {
+    const clean = Array.from(
+      new Set(
+        (Array.isArray(tagsArray) ? tagsArray : [])
+          .map(t => (typeof t === "string" ? t.trim() : ""))
+          .filter(Boolean)
+      )
+    );
+    localStorage.setItem("novel_studio_custom_tags", JSON.stringify(clean));
+    return clean;
+  }
+
   // ==================== TAG COMBINATION HISTORY ====================
 
   getTagHistory() {

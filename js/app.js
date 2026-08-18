@@ -11,6 +11,7 @@ import { storageService } from "./services/storageService.js";
 class NovelStudioApp {
   constructor() {
     this.currentStep = 1;
+    this.customTags = storageService.getCustomTags();
     this.selectedTags = new Set(["Zhihu style", "Vả mặt cực mạnh", "Plot twist bất ngờ", "Báo thù"]);
     this.generatedConcepts = [];
     this.selectedConcept = null;
@@ -97,6 +98,7 @@ class NovelStudioApp {
     const container = document.getElementById("tropeCloudContainer");
     container.innerHTML = "";
 
+    // 1. Render Predefined Categories
     TROPE_CATEGORIES.forEach(cat => {
       const block = document.createElement("div");
       block.className = "trope-category-block";
@@ -135,6 +137,134 @@ class NovelStudioApp {
       block.appendChild(list);
       container.appendChild(block);
     });
+
+    // 2. Render User Custom Tags Block
+    const customBlock = document.createElement("div");
+    customBlock.className = "trope-category-block custom-tropes-section";
+
+    const customTitle = document.createElement("div");
+    customTitle.className = "trope-category-title";
+    customTitle.innerHTML = `<span>⭐ Thẻ Tùy Chỉnh Của Bạn</span> <span style="font-size: 11px; font-weight: normal; color: var(--text-dim);">(${this.customTags.length} thẻ)</span>`;
+    customBlock.appendChild(customTitle);
+
+    const customList = document.createElement("div");
+    customList.className = "trope-tag-list";
+
+    this.customTags.forEach(tagName => {
+      const pill = document.createElement("div");
+      const isActive = this.selectedTags.has(tagName);
+      pill.className = `trope-tag-pill custom-tag ${isActive ? 'active' : ''}`;
+
+      const textSpan = document.createElement("span");
+      textSpan.textContent = tagName;
+      pill.appendChild(textSpan);
+
+      const removeBtn = document.createElement("span");
+      removeBtn.className = "tag-remove-btn";
+      removeBtn.innerHTML = "&times;";
+      removeBtn.title = `Xóa thẻ "${tagName}"`;
+      removeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.removeCustomTag(tagName);
+      });
+      pill.appendChild(removeBtn);
+
+      pill.addEventListener("click", () => {
+        if (this.selectedTags.has(tagName)) {
+          if (this.selectedTags.size > 1) {
+            this.selectedTags.delete(tagName);
+            pill.classList.remove("active");
+          } else {
+            this.showToast("Cần giữ lại ít nhất 1 thẻ trope!", "warning");
+          }
+        } else {
+          this.selectedTags.add(tagName);
+          pill.classList.add("active");
+        }
+      });
+
+      customList.appendChild(pill);
+    });
+
+    // Quick add pill button
+    const addPill = document.createElement("div");
+    addPill.className = "trope-tag-pill add-tag-pill";
+    addPill.innerHTML = `<span>➕ Nhập Thẻ Mới...</span>`;
+    addPill.title = "Bấm để mở khung tự nhập thẻ trope tùy chỉnh";
+    addPill.addEventListener("click", () => {
+      this.toggleCustomTagPanel(true);
+    });
+    customList.appendChild(addPill);
+
+    customBlock.appendChild(customList);
+    container.appendChild(customBlock);
+  }
+
+  toggleCustomTagPanel(show) {
+    const panel = document.getElementById("customTagInputPanel");
+    const input = document.getElementById("customTagInput");
+    if (!panel) return;
+
+    const isCurrentlyVisible = panel.style.display !== "none";
+    const shouldShow = show !== undefined ? show : !isCurrentlyVisible;
+
+    if (shouldShow) {
+      panel.style.display = "block";
+      if (input) {
+        input.focus();
+        input.select();
+      }
+      panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } else {
+      panel.style.display = "none";
+      if (input) input.value = "";
+    }
+  }
+
+  addCustomTag(rawInput) {
+    if (!rawInput || !rawInput.trim()) {
+      this.showToast("Vui lòng nhập tên thẻ trope!", "warning");
+      return;
+    }
+
+    const rawTags = rawInput
+      .split(/[,;\n]+/)
+      .map(t => t.trim())
+      .filter(t => t.length > 0);
+
+    if (rawTags.length === 0) {
+      this.showToast("Vui lòng nhập tên thẻ hợp lệ!", "warning");
+      return;
+    }
+
+    let addedCount = 0;
+    rawTags.forEach(tag => {
+      if (!this.customTags.includes(tag)) {
+        this.customTags.push(tag);
+        addedCount++;
+      }
+      this.selectedTags.add(tag);
+    });
+
+    storageService.saveCustomTags(this.customTags);
+    this.renderTropeCloud();
+
+    const input = document.getElementById("customTagInput");
+    if (input) input.value = "";
+
+    if (addedCount > 0) {
+      this.showToast(`Đã thêm ${addedCount} thẻ mới và tự động kích hoạt!`, "success");
+    } else {
+      this.showToast(`Các thẻ đã được kích hoạt!`, "info");
+    }
+  }
+
+  removeCustomTag(tagName) {
+    this.customTags = this.customTags.filter(t => t !== tagName);
+    this.selectedTags.delete(tagName);
+    storageService.saveCustomTags(this.customTags);
+    this.renderTropeCloud();
+    this.showToast(`Đã xóa thẻ: "${tagName}"`, "info");
   }
 
   applyRandomTropes() {
@@ -703,6 +833,36 @@ class NovelStudioApp {
     });
 
     // Step 1 Events
+    const btnToggleAdd = document.getElementById("btnToggleAddTag");
+    if (btnToggleAdd) {
+      btnToggleAdd.addEventListener("click", () => this.toggleCustomTagPanel());
+    }
+
+    const btnCloseAdd = document.getElementById("btnCloseAddTag");
+    if (btnCloseAdd) {
+      btnCloseAdd.addEventListener("click", () => this.toggleCustomTagPanel(false));
+    }
+
+    const btnAdd = document.getElementById("btnAddCustomTag");
+    if (btnAdd) {
+      btnAdd.addEventListener("click", () => {
+        const input = document.getElementById("customTagInput");
+        if (input) this.addCustomTag(input.value);
+      });
+    }
+
+    const customTagInput = document.getElementById("customTagInput");
+    if (customTagInput) {
+      customTagInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          this.addCustomTag(customTagInput.value);
+        } else if (e.key === "Escape") {
+          this.toggleCustomTagPanel(false);
+        }
+      });
+    }
+
     document.getElementById("btnRandomTropes").addEventListener("click", () => this.applyRandomTropes());
     document.getElementById("btnSamplePremise").addEventListener("click", () => {
       const sample = getRandomSamplePremise();

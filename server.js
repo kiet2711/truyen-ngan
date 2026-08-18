@@ -42,9 +42,10 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`====================================================`);
   console.log(`🚀 AI NOVEL STUDIO is running!`);
-  console.log(`👉 Open in browser: http://localhost:${PORT}`);
+  console.log(`👉 Local: http://localhost:${PORT}`);
+  console.log(`👉 Network / Cloud: http://0.0.0.0:${PORT}`);
   console.log(`====================================================`);
 });

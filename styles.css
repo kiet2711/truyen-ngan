@@ -421,6 +421,133 @@ body {
   transform: scale(1.03);
 }
 
+.trope-tag-pill.custom-tag {
+  border-color: rgba(236, 72, 153, 0.35);
+  background: #1e1b36;
+}
+
+.trope-tag-pill.custom-tag.active {
+  background: var(--grad-tag-active);
+  border-color: transparent;
+}
+
+.tag-remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: bold;
+  line-height: 1;
+  margin-left: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.25);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.tag-remove-btn:hover {
+  background: #ef4444;
+  color: #ffffff;
+  transform: scale(1.15);
+}
+
+/* Add Tag Pill Button */
+.trope-tag-pill.add-tag-pill {
+  border: 1px dashed rgba(236, 72, 153, 0.55);
+  background: rgba(236, 72, 153, 0.06);
+  color: #f472b6;
+  font-weight: 600;
+}
+
+.trope-tag-pill.add-tag-pill:hover {
+  border-color: #ec4899;
+  background: rgba(236, 72, 153, 0.18);
+  color: #ffffff;
+  box-shadow: 0 0 15px rgba(236, 72, 153, 0.3);
+  transform: translateY(-2px);
+}
+
+/* Custom Tag Quick Input Panel */
+.custom-tag-panel {
+  margin-bottom: 20px;
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.08), rgba(168, 85, 247, 0.08));
+  border: 1px solid rgba(236, 72, 153, 0.3);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  box-shadow: 0 4px 20px rgba(236, 72, 153, 0.12);
+  animation: fadeInSlideDown 0.25s ease-out;
+}
+
+@keyframes fadeInSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.custom-tag-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.custom-tag-icon {
+  font-size: 18px;
+}
+
+.custom-tag-field {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid rgba(236, 72, 153, 0.35);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  padding: 10px 14px;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.custom-tag-field:focus {
+  outline: none;
+  border-color: var(--accent-pink);
+  box-shadow: 0 0 12px rgba(236, 72, 153, 0.3);
+}
+
+.custom-tag-tip {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  padding-left: 28px;
+}
+
+.custom-tag-tip code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #f472b6;
+  font-family: monospace;
+}
+
+.btn-glow-pink {
+  border-color: rgba(236, 72, 153, 0.45) !important;
+  background: rgba(236, 72, 153, 0.12) !important;
+  color: #f472b6 !important;
+}
+
+.btn-glow-pink:hover {
+  background: rgba(236, 72, 153, 0.22) !important;
+  border-color: #ec4899 !important;
+  color: #fff !important;
+  box-shadow: 0 0 15px rgba(236, 72, 153, 0.35);
+}
+
 /* Custom Idea & Premise */
 .param-box {
   background: var(--bg-surface);

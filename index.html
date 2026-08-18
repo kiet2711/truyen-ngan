@@ -593,6 +593,12 @@
         <button class="modal-close" id="btnCloseAdmin">&times;</button>
       </div>
 
+      <!-- Admin Tabs Row -->
+      <div class="auth-tab-row" style="margin-bottom: 20px;">
+        <button class="auth-tab active" id="tabAdminUsers" type="button">👥 Quản Lý Thành Viên</button>
+        <button class="auth-tab" id="tabAdminStories" type="button">📚 Kho Truyện Người Dùng (<span id="adminTotalStoryBadge">0</span>)</button>
+      </div>
+
       <!-- Admin Stats Row -->
       <div class="admin-stats-grid">
         <div class="admin-stat-card">
@@ -617,42 +623,69 @@
           </div>
         </div>
         <div class="admin-stat-card">
-          <div class="admin-stat-icon text-pink">🏷️</div>
+          <div class="admin-stat-icon text-pink">📚</div>
           <div class="admin-stat-info">
-            <div class="admin-stat-label">Tổng Thẻ Trope Tạo</div>
-            <div class="admin-stat-value text-pink" id="statTotalTags">0</div>
+            <div class="admin-stat-label">Tổng Truyện Đã Lưu</div>
+            <div class="admin-stat-value text-pink" id="statTotalStories">0</div>
           </div>
         </div>
       </div>
 
-      <!-- Controls & Search -->
-      <div class="admin-toolbar">
-        <div style="flex: 1; position: relative;">
-          <input type="text" id="adminSearchUsers" class="param-input" placeholder="🔍 Tìm kiếm theo tên đăng nhập hoặc email...">
+      <!-- VIEW 1: USERS MANAGEMENT -->
+      <div id="adminViewUsers">
+        <!-- Controls & Search -->
+        <div class="admin-toolbar">
+          <div style="flex: 1; position: relative;">
+            <input type="text" id="adminSearchUsers" class="param-input" placeholder="🔍 Tìm kiếm theo tên đăng nhập hoặc email...">
+          </div>
+          <button id="btnRefreshAdminUsers" class="btn btn-secondary btn-sm">
+            🔄 Tải Lại
+          </button>
         </div>
-        <button id="btnRefreshAdminUsers" class="btn btn-secondary btn-sm">
-          🔄 Tải Lại
-        </button>
+
+        <!-- Users Table -->
+        <div class="admin-table-container">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th style="width: 50px;">ID</th>
+                <th>Tài Khoản</th>
+                <th>Email</th>
+                <th>Vai Trò</th>
+                <th>Thẻ Trope</th>
+                <th>Truyện Đã Viết</th>
+                <th>Trạng Thái</th>
+                <th style="text-align: right;">Hành Động</th>
+              </tr>
+            </thead>
+            <tbody id="adminUsersTableBody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <!-- Users Table -->
-      <div class="admin-table-container">
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th style="width: 50px;">ID</th>
-              <th>Tài Khoản</th>
-              <th>Email</th>
-              <th>Vai Trò</th>
-              <th>Thẻ Đã Tạo</th>
-              <th>Trạng Thái</th>
-              <th style="text-align: right;">Hành Động</th>
-            </tr>
-          </thead>
-          <tbody id="adminUsersTableBody">
-            <!-- Rendered via JS -->
-          </tbody>
-        </table>
+      <!-- VIEW 2: ALL USER STORIES (ADMIN READER) -->
+      <div id="adminViewStories" style="display: none;">
+        <!-- Stories Toolbar -->
+        <div class="admin-toolbar">
+          <div style="flex: 1; position: relative;">
+            <input type="text" id="adminSearchStories" class="param-input" placeholder="🔍 Tìm truyện theo tiêu đề, tác giả hoặc trope...">
+          </div>
+          <button id="btnRefreshAdminStories" class="btn btn-secondary btn-sm">
+            🔄 Tải Lại Truyện
+          </button>
+        </div>
+
+        <div id="adminStoriesAuthorFilterBadge" style="display: none; margin-bottom: 12px; font-size: 13px; color: var(--accent-pink);">
+          <span>Đang lọc theo tác giả: <strong id="adminFilterAuthorName">...</strong></span>
+          <button id="btnClearAuthorFilter" class="btn btn-secondary btn-xs" style="margin-left: 8px;">✕ Hiện Tất Cả</button>
+        </div>
+
+        <!-- Stories Container -->
+        <div id="adminStoriesListContainer" style="display: flex; flex-direction: column; gap: 12px; max-height: 50vh; overflow-y: auto; padding-right: 4px;">
+          <!-- Rendered via JS -->
+        </div>
       </div>
     </div>
   </div>

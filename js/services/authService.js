@@ -223,6 +223,64 @@ class AuthService {
     return null;
   }
 
+  // ==================== USER STORIES (Cloud Sync) ====================
+
+  async fetchUserStories() {
+    if (!this.isLoggedIn()) return null;
+
+    try {
+      const res = await fetch("/api/user/stories", {
+        headers: { "Authorization": `Bearer ${this.token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.stories || [];
+      }
+    } catch (e) {
+      console.warn("Fetch stories error:", e);
+    }
+    return null;
+  }
+
+  async saveUserStory(story) {
+    if (!this.isLoggedIn()) return null;
+
+    try {
+      const res = await fetch("/api/user/stories", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${this.token}`
+        },
+        body: JSON.stringify({ story })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.story;
+      }
+    } catch (e) {
+      console.warn("Save user story error:", e);
+    }
+    return null;
+  }
+
+  async deleteUserStory(storyId) {
+    if (!this.isLoggedIn()) return null;
+
+    try {
+      const res = await fetch(`/api/user/stories/${encodeURIComponent(storyId)}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${this.token}` }
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn("Delete story error:", e);
+    }
+    return null;
+  }
+
   // ==================== ADMIN API CALLS ====================
 
   async adminGetUsers() {
@@ -234,6 +292,40 @@ class AuthService {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Không thể tải danh sách người dùng");
     return data.users || [];
+  }
+
+  async adminGetUserStories(userId) {
+    if (!this.isAdmin()) throw new Error("Yêu cầu quyền Quản trị viên");
+
+    const res = await fetch(`/api/admin/users/${userId}/stories`, {
+      headers: { "Authorization": `Bearer ${this.token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Không thể tải danh sách truyện của người dùng");
+    return data.stories || [];
+  }
+
+  async adminGetAllStories() {
+    if (!this.isAdmin()) throw new Error("Yêu cầu quyền Quản trị viên");
+
+    const res = await fetch("/api/admin/stories", {
+      headers: { "Authorization": `Bearer ${this.token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Không thể tải danh sách tất cả truyện");
+    return data.stories || [];
+  }
+
+  async adminDeleteStory(storyId) {
+    if (!this.isAdmin()) throw new Error("Yêu cầu quyền Quản trị viên");
+
+    const res = await fetch(`/api/admin/stories/${encodeURIComponent(storyId)}`, {
+      method: "DELETE",
+      headers: { "Authorization": `Bearer ${this.token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Không thể xóa truyện");
+    return data;
   }
 
   async adminSetBan(userId, isBanned) {

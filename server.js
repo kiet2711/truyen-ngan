@@ -185,6 +185,38 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { success: true, ...saved });
       }
 
+      // 11. User Stories: GET
+      if (pathname === '/api/user/stories' && req.method === 'GET') {
+        const user = await getAuthUser(req);
+        if (!user) {
+          return sendJson(res, 401, { error: "Vui lòng đăng nhập để lấy danh sách truyện" });
+        }
+        const stories = await auth.getUserStories(user.id);
+        return sendJson(res, 200, { success: true, stories });
+      }
+
+      // 12. User Stories: POST (Save / Sync)
+      if (pathname === '/api/user/stories' && req.method === 'POST') {
+        const user = await getAuthUser(req);
+        if (!user) {
+          return sendJson(res, 401, { error: "Vui lòng đăng nhập để lưu truyện" });
+        }
+        const body = await parseBody(req);
+        const story = await auth.saveUserStory(user.id, body.story || body);
+        return sendJson(res, 200, { success: true, story });
+      }
+
+      // 13. User Stories: DELETE
+      if (pathname.startsWith('/api/user/stories/') && req.method === 'DELETE') {
+        const user = await getAuthUser(req);
+        if (!user) {
+          return sendJson(res, 401, { error: "Vui lòng đăng nhập" });
+        }
+        const storyId = pathname.substring('/api/user/stories/'.length);
+        const result = await auth.deleteUserStory(user.id, storyId);
+        return sendJson(res, 200, result);
+      }
+
       // ==================== ADMIN ENDPOINTS (Role = 'admin' Required) ====================
       if (pathname.startsWith('/api/admin/')) {
         const user = await getAuthUser(req);
@@ -199,6 +231,28 @@ const server = http.createServer(async (req, res) => {
         if (pathname === '/api/admin/users' && req.method === 'GET') {
           const users = await auth.getAllUsers();
           return sendJson(res, 200, { success: true, users });
+        }
+
+        // Admin: Read stories of a specific user
+        const userStoriesMatch = pathname.match(/^\/api\/admin\/users\/(\d+)\/stories$/);
+        if (userStoriesMatch && req.method === 'GET') {
+          const targetId = userStoriesMatch[1];
+          const stories = await auth.adminGetUserStories(targetId);
+          return sendJson(res, 200, { success: true, stories });
+        }
+
+        // Admin: Get all stories across all users
+        if (pathname === '/api/admin/stories' && req.method === 'GET') {
+          const stories = await auth.adminGetAllStories();
+          return sendJson(res, 200, { success: true, stories });
+        }
+
+        // Admin: Delete any story
+        const adminDelStoryMatch = pathname.match(/^\/api\/admin\/stories\/(.+)$/);
+        if (adminDelStoryMatch && req.method === 'DELETE') {
+          const storyId = adminDelStoryMatch[1];
+          const result = await auth.adminDeleteStory(storyId);
+          return sendJson(res, 200, result);
         }
 
         // Admin: Ban / Unban user
@@ -280,7 +334,7 @@ async function start() {
     console.log(`🚀 AI NOVEL STUDIO (Auth & Neon DB Ready)`);
     console.log(`👉 Local:   http://localhost:${PORT}`);
     console.log(`👉 Network: http://0.0.0.0:${PORT}`);
-    console.log(`👑 Admin:   admin / Admin@123456`);
+    console.log(`👑 Admin:   admin / admin`);
     console.log(`====================================================`);
   });
 }

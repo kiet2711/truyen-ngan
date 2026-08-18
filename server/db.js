@@ -176,20 +176,26 @@ async function runPostgresMigrations() {
   `;
   await pool.query(query);
 
-  // Seed default admin
+  // Seed or update default admin
   const adminUsername = process.env.ADMIN_USERNAME || 'admin';
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@novels.ai';
-  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123456';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
+  const { hash, salt } = hashPassword(adminPassword);
 
-  const checkAdmin = await pool.query('SELECT id FROM users WHERE username = $1 OR role = $2 LIMIT 1', [adminUsername, 'admin']);
+  const checkAdmin = await pool.query('SELECT id FROM users WHERE username = $1 LIMIT 1', [adminUsername]);
   if (checkAdmin.rows.length === 0) {
-    const { hash, salt } = hashPassword(adminPassword);
     await pool.query(
       `INSERT INTO users (username, email, password_hash, salt, role, is_banned)
        VALUES ($1, $2, $3, $4, 'admin', FALSE)`,
       [adminUsername, adminEmail, hash, salt]
     );
     console.log(`👑 Đã khởi tạo tài khoản Admin mặc định: ${adminUsername} (Mật khẩu: ${adminPassword})`);
+  } else {
+    await pool.query(
+      `UPDATE users SET password_hash = $1, salt = $2, role = 'admin', is_banned = FALSE WHERE username = $3`,
+      [hash, salt, adminUsername]
+    );
+    console.log(`👑 Đã cập nhật tài khoản Admin: ${adminUsername} (Mật khẩu: ${adminPassword})`);
   }
 }
 
@@ -197,11 +203,11 @@ function initFallbackAdmin() {
   const data = getFallbackData();
   const adminUsername = process.env.ADMIN_USERNAME || 'admin';
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@novels.ai';
-  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123456';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
+  const { hash, salt } = hashPassword(adminPassword);
 
-  const existingAdmin = data.users.find(u => u.username === adminUsername || u.role === 'admin');
+  const existingAdmin = data.users.find(u => u.username === adminUsername);
   if (!existingAdmin) {
-    const { hash, salt } = hashPassword(adminPassword);
     const adminUser = {
       id: 1,
       username: adminUsername,
@@ -216,6 +222,13 @@ function initFallbackAdmin() {
     data.users.push(adminUser);
     saveFallbackData(data);
     console.log(`👑 Đã khởi tạo tài khoản Admin mặc định (Fallback): ${adminUsername} (Mật khẩu: ${adminPassword})`);
+  } else {
+    existingAdmin.password_hash = hash;
+    existingAdmin.salt = salt;
+    existingAdmin.role = 'admin';
+    existingAdmin.is_banned = false;
+    saveFallbackData(data);
+    console.log(`👑 Đã cập nhật tài khoản Admin (Fallback): ${adminUsername} (Mật khẩu: ${adminPassword})`);
   }
 }
 

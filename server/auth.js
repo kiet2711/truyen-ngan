@@ -297,6 +297,163 @@ async function removeUserTag(userId, tagName) {
   return await getUserTags(userId);
 }
 
+// ==================== USER STORIES (Cloud Storage) ====================
+
+async function saveUserStory(userId, story) {
+  if (!story || !story.id) throw new Error("Dữ liệu truyện không hợp lệ!");
+
+  const title = story.title || "Truyện chưa đặt tên";
+  const genreId = story.genreId || story.params?.selectedTags?.[0] || "zhihu";
+
+  if (db.isPostgres && db.pool) {
+    await db.pool.query(
+      `INSERT INTO user_stories (id, user_id, title, genre_id, data, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (id) 
+       DO UPDATE SET title = $3, genre_id = $4, data = $5, updated_at = NOW()`,
+      [story.id, userId, title, genreId, JSON.stringify(story)]
+    );
+  } else {
+    const data = db.getFallbackData();
+    if (!data.user_stories) data.user_stories = [];
+    const idx = data.user_stories.findIndex(s => s.id === story.id);
+    const item = {
+      id: story.id,
+      user_id: userId,
+      title: title,
+      genre_id: genreId,
+      data: story,
+      created_at: story.createdAt || new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    if (idx >= 0) {
+      data.user_stories[idx] = item;
+    } else {
+      data.user_stories.push(item);
+    }
+    db.saveFallbackData(data);
+  }
+  return story;
+}
+
+async function getUserStories(userId) {
+  if (db.isPostgres && db.pool) {
+    const res = await db.pool.query(
+      `SELECT id, user_id, title, genre_id, data, created_at, updated_at 
+       FROM user_stories 
+       WHERE user_id = $1 
+       ORDER BY updated_at DESC`,
+      [userId]
+    );
+    return res.rows.map(r => r.data || r);
+  } else {
+    const data = db.getFallbackData();
+    return (data.user_stories || [])
+      .filter(s => s.user_id === userId)
+      .map(s => s.data || s);
+  }
+}
+
+async function deleteUserStory(userId, storyId) {
+  if (db.isPostgres && db.pool) {
+    await db.pool.query(
+      'DELETE FROM user_stories WHERE id = $1 AND user_id = $2',
+      [storyId, userId]
+    );
+  } else {
+    const data = db.getFallbackData();
+    if (data.user_stories) {
+      data.user_stories = data.user_stories.filter(s => !(s.id === storyId && s.user_id === userId));
+      db.saveFallbackData(data);
+    }
+  }
+  return { success: true, storyId };
+}
+
+// ==================== ADMIN STORY MANAGEMENT ====================
+
+async function adminGetUserStories(targetUserId) {
+  const targetId = parseInt(targetUserId, 10);
+  if (isNaN(targetId)) throw new Error("ID người dùng không hợp lệ!");
+
+  if (db.isPostgres && db.pool) {
+    const res = await db.pool.query(
+      `SELECT s.id, s.user_id, s.title, s.genre_id, s.data, s.created_at, s.updated_at,
+              u.username AS author_username, u.email AS author_email
+       FROM user_stories s
+       JOIN users u ON s.user_id = u.id
+       WHERE s.user_id = $1
+       ORDER BY s.updated_at DESC`,
+      [targetId]
+    );
+    return res.rows.map(r => ({
+      ...r,
+      story: r.data
+    }));
+  } else {
+    const data = db.getFallbackData();
+    const user = data.users.find(u => u.id === targetId);
+    return (data.user_stories || [])
+      .filter(s => s.user_id === targetId)
+      .map(s => ({
+        id: s.id,
+        user_id: s.user_id,
+        title: s.title,
+        genre_id: s.genre_id,
+        author_username: user ? user.username : 'Unknown',
+        author_email: user ? user.email : '',
+        created_at: s.created_at,
+        updated_at: s.updated_at,
+        story: s.data || s
+      }));
+  }
+}
+
+async function adminGetAllStories() {
+  if (db.isPostgres && db.pool) {
+    const res = await db.pool.query(
+      `SELECT s.id, s.user_id, s.title, s.genre_id, s.data, s.created_at, s.updated_at,
+              u.username AS author_username, u.email AS author_email
+       FROM user_stories s
+       JOIN users u ON s.user_id = u.id
+       ORDER BY s.updated_at DESC`
+    );
+    return res.rows.map(r => ({
+      ...r,
+      story: r.data
+    }));
+  } else {
+    const data = db.getFallbackData();
+    return (data.user_stories || []).map(s => {
+      const user = data.users.find(u => u.id === s.user_id);
+      return {
+        id: s.id,
+        user_id: s.user_id,
+        title: s.title,
+        genre_id: s.genre_id,
+        author_username: user ? user.username : 'Unknown',
+        author_email: user ? user.email : '',
+        created_at: s.created_at,
+        updated_at: s.updated_at,
+        story: s.data || s
+      };
+    });
+  }
+}
+
+async function adminDeleteStory(storyId) {
+  if (db.isPostgres && db.pool) {
+    await db.pool.query('DELETE FROM user_stories WHERE id = $1', [storyId]);
+  } else {
+    const data = db.getFallbackData();
+    if (data.user_stories) {
+      data.user_stories = data.user_stories.filter(s => s.id !== storyId);
+      db.saveFallbackData(data);
+    }
+  }
+  return { success: true, storyId };
+}
+
 // ==================== ADMIN MANAGEMENT ====================
 
 async function getAllUsers() {
@@ -507,10 +664,16 @@ module.exports = {
   removeUserTag,
   getUserApiSettings,
   saveUserApiSettings,
+  saveUserStory,
+  getUserStories,
+  deleteUserStory,
   getAllUsers,
   setUserBanStatus,
   setUserRole,
   deleteUser,
-  getAdminStats
+  getAdminStats,
+  adminGetUserStories,
+  adminGetAllStories,
+  adminDeleteStory
 };
 

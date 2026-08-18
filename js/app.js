@@ -63,8 +63,22 @@ class NovelStudioApp {
 
   async updateSavedCount() {
     const stories = await storageService.getAllStories();
-    const el = document.getElementById("savedStoryCount");
-    if (el) el.textContent = stories.length;
+    const count = stories.length;
+    const el = document.getElementById("savedStoriesCount");
+    if (el) el.textContent = count;
+  }
+
+  async saveCurrentStory() {
+    if (!this.currentStory) return;
+    await storageService.saveStory(this.currentStory);
+    if (authService.isLoggedIn()) {
+      try {
+        await authService.saveUserStory(this.currentStory);
+      } catch (e) {
+        console.warn("Cloud story sync error:", e);
+      }
+    }
+    await this.updateSavedCount();
   }
 
   // ==================== STEP NAVIGATION ====================
@@ -510,9 +524,30 @@ class NovelStudioApp {
     document.getElementById("adminModal").classList.remove("open");
   }
 
+  switchAdminTab(tab) {
+    const tabUsers = document.getElementById("tabAdminUsers");
+    const tabStories = document.getElementById("tabAdminStories");
+    const viewUsers = document.getElementById("adminViewUsers");
+    const viewStories = document.getElementById("adminViewStories");
+
+    if (tab === "stories") {
+      tabUsers?.classList.remove("active");
+      tabStories?.classList.add("active");
+      if (viewUsers) viewUsers.style.display = "none";
+      if (viewStories) viewStories.style.display = "block";
+    } else {
+      tabUsers?.classList.add("active");
+      tabStories?.classList.remove("active");
+      if (viewUsers) viewUsers.style.display = "block";
+      if (viewStories) viewStories.style.display = "none";
+    }
+  }
+
   async loadAdminData() {
     const tableBody = document.getElementById("adminUsersTableBody");
-    tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 24px;"><span class="typing-cursor"></span> Đang tải dữ liệu từ Neon DB...</td></tr>`;
+    const storiesContainer = document.getElementById("adminStoriesListContainer");
+    if (tableBody) tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 24px;"><span class="typing-cursor"></span> Đang tải dữ liệu từ Neon DB...</td></tr>`;
+    if (storiesContainer) storiesContainer.innerHTML = `<div style="text-align: center; padding: 24px; color: var(--text-dim);"><span class="typing-cursor"></span> Đang tải danh sách truyện...</div>`;
 
     try {
       const stats = await authService.adminGetStats();
@@ -520,24 +555,35 @@ class NovelStudioApp {
         document.getElementById("statTotalUsers").textContent = stats.totalUsers || 0;
         document.getElementById("statActiveUsers").textContent = stats.activeUsers || 0;
         document.getElementById("statBannedUsers").textContent = stats.bannedUsers || 0;
-        document.getElementById("statTotalTags").textContent = stats.totalTags || 0;
+        document.getElementById("statTotalStories").textContent = stats.totalStories || 0;
       }
 
+      // Load Users & Stories
       this.adminUsers = await authService.adminGetUsers();
+      this.adminStories = await authService.adminGetAllStories();
+
+      const totalStories = this.adminStories.length;
+      const totalStoriesBadge = document.getElementById("adminTotalStoryBadge");
+      if (totalStoriesBadge) totalStoriesBadge.textContent = totalStories;
+      const statTotalStories = document.getElementById("statTotalStories");
+      if (statTotalStories) statTotalStories.textContent = totalStories;
+
       this.renderAdminUsersTable(this.adminUsers);
+      this.renderAdminStoriesList(this.adminStories);
     } catch (err) {
       console.error(err);
-      tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--accent-rose); padding: 20px;">Lỗi tải dữ liệu: ${err.message}</td></tr>`;
+      if (tableBody) tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--accent-rose); padding: 20px;">Lỗi tải dữ liệu: ${err.message}</td></tr>`;
       this.showToast(`Lỗi admin: ${err.message}`, "error");
     }
   }
 
   renderAdminUsersTable(users) {
     const tableBody = document.getElementById("adminUsersTableBody");
+    if (!tableBody) return;
     tableBody.innerHTML = "";
 
     if (!users || users.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">Không tìm thấy người dùng nào.</td></tr>`;
+      tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">Không tìm thấy người dùng nào.</td></tr>`;
       return;
     }
 
@@ -547,6 +593,7 @@ class NovelStudioApp {
       const isCurrentLoggedIn = authService.currentUser?.id === user.id;
       const isAdminUser = user.role === "admin";
       const isBanned = Boolean(user.is_banned);
+      const storyCount = user.story_count || 0;
 
       tr.innerHTML = `
         <td style="color: var(--text-dim); font-size: 11px;">#${user.id}</td>
@@ -559,6 +606,11 @@ class NovelStudioApp {
           <span class="${isAdminUser ? 'badge-role-admin' : 'badge-role-user'}">${isAdminUser ? '👑 ADMIN' : 'MEMBER'}</span>
         </td>
         <td style="font-weight: 600; color: #f472b6;">${user.custom_tag_count || 0} thẻ</td>
+        <td>
+          <button class="btn-action-xs btn-action-role btn-view-user-stories" data-id="${user.id}" data-username="${user.username}" title="Xem và đọc tất cả truyện của người dùng này">
+            📖 ${storyCount} truyện
+          </button>
+        </td>
         <td>
           <span class="${isBanned ? 'badge-status-banned' : 'badge-status-active'}">
             ${isBanned ? '🚫 ĐÃ KHÓA' : '🟢 HOẠT ĐỘNG'}
@@ -580,6 +632,14 @@ class NovelStudioApp {
           </div>
         </td>
       `;
+
+      // Event: View User Stories
+      const viewStoriesBtn = tr.querySelector(".btn-view-user-stories");
+      if (viewStoriesBtn) {
+        viewStoriesBtn.addEventListener("click", () => {
+          this.filterAdminStoriesByAuthor(user.id, user.username);
+        });
+      }
 
       // Event: Toggle Ban
       const banBtn = tr.querySelector(".btn-toggle-ban");
@@ -623,7 +683,7 @@ class NovelStudioApp {
       const delBtn = tr.querySelector(".btn-delete-user");
       if (delBtn) {
         delBtn.addEventListener("click", async () => {
-          if (confirm(`CẢNH BÁO: Bạn có chắc chắn muốn XÓA VĨNH VIỄN tài khoản "${user.username}" và toàn bộ dữ liệu thẻ của người này không?`)) {
+          if (confirm(`CẢNH BÁO: Bạn có chắc chắn muốn XÓA VĨNH VIỄN tài khoản "${user.username}" và toàn bộ dữ liệu của người này không?`)) {
             try {
               await authService.adminDeleteUser(user.id);
               this.showToast(`Đã xóa tài khoản "${user.username}"!`, "success");
@@ -639,6 +699,81 @@ class NovelStudioApp {
     });
   }
 
+  renderAdminStoriesList(stories) {
+    const container = document.getElementById("adminStoriesListContainer");
+    if (!container) return;
+    container.innerHTML = "";
+
+    if (!stories || stories.length === 0) {
+      container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 32px;">Chưa có bộ truyện nào trong hệ thống.</div>`;
+      return;
+    }
+
+    stories.forEach(item => {
+      const storyData = item.story || item;
+      const card = document.createElement("div");
+      card.className = "studio-card";
+      card.style.padding = "16px";
+      card.style.background = "#131b2e";
+      card.style.border = "1px solid rgba(255, 255, 255, 0.08)";
+
+      const totalWords = storyData.chapters?.reduce((sum, c) => sum + (c.wordCount || 0), 0) || 0;
+      const completedCount = storyData.chapters?.filter(c => c.status === "completed").length || 0;
+      const totalChapters = storyData.chapters?.length || 0;
+      const tags = (storyData.params?.selectedTags || []).slice(0, 4).join(", ") || "Chưa gắn thẻ";
+      const author = item.author_username ? `${item.author_username} (${item.author_email || 'Thành viên'})` : "Thành viên";
+
+      card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 260px;">
+            <div style="font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+              <span>📖 ${storyData.title || item.title || 'Truyện chưa đặt tên'}</span>
+            </div>
+            <div style="font-size: 12px; color: var(--accent-pink); margin-top: 4px;">
+              🏷️ ${tags} • ${completedCount}/${totalChapters} chương hoàn thành (${totalWords.toLocaleString()} từ)
+            </div>
+            <div style="display: flex; gap: 12px; font-size: 11px; color: var(--text-dim); margin-top: 6px; flex-wrap: wrap;">
+              <span>👤 <strong>Tác giả:</strong> <span style="color: #93c5fd;">${author}</span></span>
+              <span>🕒 <strong>Cập nhật:</strong> ${new Date(item.updated_at || storyData.updatedAt || Date.now()).toLocaleString("vi-VN")}</span>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button class="btn btn-primary btn-sm btn-admin-read-story" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none;">
+              📖 Đọc Toàn Bộ Truyện
+            </button>
+            <button class="btn btn-danger btn-sm btn-admin-del-story" title="Xóa truyện">
+              🗑️ Xóa
+            </button>
+          </div>
+        </div>
+      `;
+
+      // Event: Admin Read Story
+      card.querySelector(".btn-admin-read-story").addEventListener("click", () => {
+        this.currentStory = storyData;
+        this.closeAdminModal();
+        this.renderReaderMode();
+        this.goToStep(4);
+        this.showToast(`👑 Admin đang đọc truyện: "${storyData.title}" của ${item.author_username || 'Tác giả'}`, "info");
+      });
+
+      // Event: Admin Delete Story
+      card.querySelector(".btn-admin-del-story").addEventListener("click", async () => {
+        if (confirm(`CẢNH BÁO ADMIN: Bạn có chắc chắn muốn XÓA bộ truyện "${item.title || storyData.title}" của tác giả "${item.author_username}" khỏi hệ thống không?`)) {
+          try {
+            await authService.adminDeleteStory(item.id);
+            this.showToast(`Đã xóa truyện "${item.title || storyData.title}"!`, "success");
+            await this.loadAdminData();
+          } catch (err) {
+            this.showToast(err.message, "error");
+          }
+        }
+      });
+
+      container.appendChild(card);
+    });
+  }
+
   filterAdminUsers(query) {
     const q = (query || "").toLowerCase().trim();
     if (!q) {
@@ -650,6 +785,34 @@ class NovelStudioApp {
       (u.email || "").toLowerCase().includes(q)
     );
     this.renderAdminUsersTable(filtered);
+  }
+
+  filterAdminStories(query) {
+    const q = (query || "").toLowerCase().trim();
+    if (!q) {
+      this.renderAdminStoriesList(this.adminStories);
+      return;
+    }
+    const filtered = (this.adminStories || []).filter(item => {
+      const s = item.story || item;
+      const title = (s.title || item.title || "").toLowerCase();
+      const author = (item.author_username || "").toLowerCase();
+      const tags = (s.params?.selectedTags || []).join(" ").toLowerCase();
+      return title.includes(q) || author.includes(q) || tags.includes(q);
+    });
+    this.renderAdminStoriesList(filtered);
+  }
+
+  filterAdminStoriesByAuthor(userId, username) {
+    this.switchAdminTab("stories");
+    const badge = document.getElementById("adminStoriesAuthorFilterBadge");
+    const nameEl = document.getElementById("adminFilterAuthorName");
+    if (badge && nameEl) {
+      nameEl.textContent = username;
+      badge.style.display = "block";
+    }
+    const filtered = (this.adminStories || []).filter(s => s.user_id === userId);
+    this.renderAdminStoriesList(filtered);
   }
 
   // ==================== STEP 1.5: GENERATE 3 CONCEPTS ====================
@@ -793,8 +956,7 @@ class NovelStudioApp {
         updatedAt: Date.now()
       };
 
-      await storageService.saveStory(this.currentStory);
-      await this.updateSavedCount();
+      await this.saveCurrentStory();
 
       this.renderCheckpoint1();
       this.goToStep(2);
@@ -908,7 +1070,7 @@ class NovelStudioApp {
     this.currentStory.title = document.getElementById("storyTitleInput").value.trim() || this.currentStory.title;
     this.currentStory.logline = document.getElementById("storyLoglineInput").value.trim();
     this.currentStory.settingDescription = document.getElementById("storySettingDescInput").value.trim();
-    await storageService.saveStory(this.currentStory);
+    await this.saveCurrentStory();
 
     this.goToStep(3);
     this.renderWritingMonitor();
@@ -1029,7 +1191,7 @@ class NovelStudioApp {
         chapter.wordCount = this.countWords(generatedText);
         chapter.status = "completed";
         
-        await storageService.saveStory(this.currentStory);
+        await this.saveCurrentStory();
         this.renderWritingMonitor();
 
         if (i < this.currentStory.chapters.length - 1) {
@@ -1249,14 +1411,48 @@ class NovelStudioApp {
       btnCloseAdmin.addEventListener("click", () => this.closeAdminModal());
     }
 
+    const tabAdminUsers = document.getElementById("tabAdminUsers");
+    if (tabAdminUsers) {
+      tabAdminUsers.addEventListener("click", () => this.switchAdminTab("users"));
+    }
+
+    const tabAdminStories = document.getElementById("tabAdminStories");
+    if (tabAdminStories) {
+      tabAdminStories.addEventListener("click", () => {
+        const badge = document.getElementById("adminStoriesAuthorFilterBadge");
+        if (badge) badge.style.display = "none";
+        this.switchAdminTab("stories");
+        this.renderAdminStoriesList(this.adminStories);
+      });
+    }
+
     const btnRefreshAdminUsers = document.getElementById("btnRefreshAdminUsers");
     if (btnRefreshAdminUsers) {
       btnRefreshAdminUsers.addEventListener("click", () => this.loadAdminData());
     }
 
+    const btnRefreshAdminStories = document.getElementById("btnRefreshAdminStories");
+    if (btnRefreshAdminStories) {
+      btnRefreshAdminStories.addEventListener("click", () => this.loadAdminData());
+    }
+
     const adminSearchUsers = document.getElementById("adminSearchUsers");
     if (adminSearchUsers) {
       adminSearchUsers.addEventListener("input", (e) => this.filterAdminUsers(e.target.value));
+    }
+
+    const adminSearchStories = document.getElementById("adminSearchStories");
+    if (adminSearchStories) {
+      adminSearchStories.addEventListener("input", (e) => this.filterAdminStories(e.target.value));
+    }
+
+    const btnClearAuthorFilter = document.getElementById("btnClearAuthorFilter");
+    if (btnClearAuthorFilter) {
+      btnClearAuthorFilter.addEventListener("click", () => {
+        const badge = document.getElementById("adminStoriesAuthorFilterBadge");
+        if (badge) badge.style.display = "none";
+        this.renderAdminStoriesList(this.adminStories);
+      });
     }
 
     // Backdrop click & Escape to close modals

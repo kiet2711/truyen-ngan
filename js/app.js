@@ -1228,6 +1228,24 @@ class NovelStudioApp {
       adminSearchUsers.addEventListener("input", (e) => this.filterAdminUsers(e.target.value));
     }
 
+    // Backdrop click & Escape to close modals
+    ["authModal", "adminModal", "apiSettingsModal", "storyLibraryModal"].forEach(id => {
+      const modal = document.getElementById(id);
+      if (modal) {
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) {
+            modal.classList.remove("open");
+          }
+        });
+      }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        document.querySelectorAll(".modal-backdrop.open").forEach(m => m.classList.remove("open"));
+      }
+    });
+
     // Header buttons
     document.getElementById("btnOpenApiSettings").addEventListener("click", () => this.openApiSettingsModal());
     document.getElementById("apiKeyStatusBadge").addEventListener("click", () => this.openApiSettingsModal());

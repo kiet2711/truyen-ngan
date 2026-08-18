@@ -371,7 +371,7 @@
         </div>
 
         <div class="reader-toolbar-actions">
-          <button id="btnCleanForAudio" class="btn btn-warning btn-sm" title="Tự động chuyển mọi số thành chữ tiếng Việt và xóa markdown thừa">
+          <button id="btnCleanForAudio" class="btn btn-warning btn-sm" title="Tự động chuyển mọi số thành chữ tiếng Việt, xóa tiêu đề chương và markdown thừa">
             🧹 Chuẩn Hóa Cho Audio / TTS
           </button>
           <button id="btnRestoreOriginalText" class="btn btn-secondary btn-sm" style="display: none;">
@@ -388,6 +388,19 @@
           <a href="https://tao-audio-truyen.onrender.com" target="_blank" rel="noopener noreferrer" class="btn btn-audio-nav btn-sm" id="btnQuickOpenAudio" title="Chuyển tới trang Tạo Audio Truyện (https://tao-audio-truyen.onrender.com)">
             <span class="audio-pulse-dot"></span> 🎙️ Web Tạo Audio ↗
           </a>
+        </div>
+
+        <!-- Audio Format Options Bar (Active by default for TTS) -->
+        <div class="reader-audio-options-bar" id="readerAudioOptionsBar">
+          <span class="audio-options-badge">⚙️ Tùy chọn Audio:</span>
+          <label class="audio-option-checkbox" title="Xóa toàn bộ tên truyện và tiêu đề các chương, gom thành một luồng nội dung liền mạch cho TTS">
+            <input type="checkbox" id="chkAudioRemoveTitles" checked>
+            <span>Xóa tiêu đề & tên chương (Gom liền mạch)</span>
+          </label>
+          <label class="audio-option-checkbox" title="Gộp tất cả nội dung thành một khối văn bản duy nhất không ngắt dòng">
+            <input type="checkbox" id="chkAudioSingleParagraph">
+            <span>Gộp tất cả thành 1 đoạn duy nhất (Không ngắt dòng)</span>
+          </label>
         </div>
       </div>
 
@@ -436,7 +449,7 @@
             <div style="font-size: 26px;">🎙️</div>
             <strong>File .TXT Chuẩn Audio (Khuyên dùng)</strong>
             <p style="font-size: 12px; color: var(--text-muted);">
-              Đã làm sạch số, xóa toàn bộ markdown. Dán trực tiếp vào CapCut, Vbee, Edge-TTS, ElevenLabs.
+              Đã làm sạch số, xóa toàn bộ markdown & tiêu đề chương. Gom liền mạch dán trực tiếp vào CapCut, Vbee, Edge-TTS, ElevenLabs.
             </p>
             <button id="btnDownloadAudioTxt" class="btn btn-success btn-sm">
               📥 Tải File .TXT Chuẩn Audio

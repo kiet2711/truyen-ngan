@@ -911,6 +911,100 @@ body {
   flex-wrap: wrap;
 }
 
+/* Audio Format Options Toolbar in Reader */
+.reader-audio-options-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background: rgba(236, 72, 153, 0.08);
+  border: 1px solid rgba(236, 72, 153, 0.25);
+  border-radius: var(--radius-sm);
+  margin-top: 10px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.audio-options-badge {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f472b6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.audio-option-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-main);
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.audio-option-checkbox input[type="checkbox"] {
+  accent-color: #ec4899;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.audio-option-checkbox:hover {
+  color: #fff;
+}
+
+/* Audio Mode Notice Banner inside Reader */
+.audio-mode-banner {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.12), rgba(139, 92, 246, 0.12));
+  border: 1px solid rgba(236, 72, 153, 0.3);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.audio-mode-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13.5px;
+  color: var(--text-main);
+}
+
+.audio-banner-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.audio-banner-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.audio-tag {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(236, 72, 153, 0.18);
+  border: 1px solid rgba(236, 72, 153, 0.35);
+  color: #f472b6;
+}
+
+.reader-audio-merged-block {
+  border-bottom: none !important;
+  margin-bottom: 0 !important;
+}
+
 .reader-container {
   background: var(--reader-bg, #0f1422);
   color: var(--reader-text, #e2e8f0);

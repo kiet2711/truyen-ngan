@@ -15,6 +15,8 @@ class NovelStudioApp {
     this.isWriting = false;
     this.isPaused = false;
     this.isAudioCleaned = false;
+    this.audioRemoveTitles = true;
+    this.audioSingleParagraph = false;
     this.adminUsers = [];
 
     this.init();
@@ -1280,6 +1282,51 @@ class NovelStudioApp {
     const body = document.getElementById("readerBody");
     body.innerHTML = "";
 
+    if (!this.currentStory || !this.currentStory.chapters) return;
+
+    // Chế độ Gom liền mạch cho Audio: Xóa tên chương, gom thành 1 luồng văn bản
+    if (this.isAudioCleaned && this.audioRemoveTitles) {
+      const mergedBlock = document.createElement("div");
+      mergedBlock.className = "reader-chapter-block reader-audio-merged-block";
+
+      const cleanText = this.getCleanAudioTxt({ removeTitles: true, singleParagraph: this.audioSingleParagraph });
+
+      const bannerHtml = `
+        <div class="audio-mode-banner">
+          <div class="audio-mode-banner-content">
+            <span class="audio-banner-icon">🎙️</span>
+            <div>
+              <strong>Chế độ Chuẩn Hóa Audio / TTS:</strong>
+              <div>Đã xóa tiêu đề truyện, tên chương và gom văn bản liền mạch sẵn sàng cho công cụ lồng tiếng AI.</div>
+            </div>
+          </div>
+          <div class="audio-banner-tags">
+            <span class="audio-tag">${this.audioSingleParagraph ? "1 Đoạn Duy Nhất" : "Liền Mạch Các Đoạn"}</span>
+            <span class="audio-tag">0 Markdown / 0 Số Thô</span>
+          </div>
+        </div>
+      `;
+
+      if (this.audioSingleParagraph) {
+        mergedBlock.innerHTML = `
+          ${bannerHtml}
+          <div class="reader-chapter-paragraphs">
+            <p class="reader-paragraph">${cleanText}</p>
+          </div>
+        `;
+      } else {
+        const paragraphs = cleanText.split("\n\n").filter(Boolean);
+        const paragraphsHtml = paragraphs.map(p => `<p class="reader-paragraph">${p}</p>`).join("");
+        mergedBlock.innerHTML = `
+          ${bannerHtml}
+          <div class="reader-chapter-paragraphs">${paragraphsHtml}</div>
+        `;
+      }
+
+      body.appendChild(mergedBlock);
+      return;
+    }
+
     this.currentStory.chapters.forEach(ch => {
       const chBlock = document.createElement("div");
       chBlock.className = "reader-chapter-block";
@@ -1307,7 +1354,14 @@ class NovelStudioApp {
     this.renderReaderChaptersContent();
     document.getElementById("btnCleanForAudio").style.display = "none";
     document.getElementById("btnRestoreOriginalText").style.display = "inline-flex";
-    this.showToast("Đã chuẩn hóa toàn bộ số, ký hiệu và làm sạch markdown sẵn sàng cho TTS!", "success");
+
+    const badge = document.getElementById("readerAudioStatusBadge");
+    if (badge) {
+      badge.textContent = "🎙️ Đã Chuẩn Hóa TTS";
+      badge.className = "meta-pill badge-audio-status";
+    }
+
+    this.showToast("Đã chuẩn hóa toàn bộ số, xóa tiêu đề & tên chương, gom văn bản sẵn sàng cho TTS!", "success");
   }
 
   restoreOriginalText() {
@@ -1315,7 +1369,14 @@ class NovelStudioApp {
     this.renderReaderChaptersContent();
     document.getElementById("btnCleanForAudio").style.display = "inline-flex";
     document.getElementById("btnRestoreOriginalText").style.display = "none";
-    this.showToast("Đã trả về văn bản gốc.", "info");
+
+    const badge = document.getElementById("readerAudioStatusBadge");
+    if (badge) {
+      badge.textContent = "✨ Bản Gốc";
+      badge.className = "meta-pill";
+    }
+
+    this.showToast("Đã trả về văn bản gốc kèm phân chia chương.", "info");
   }
 
   downloadFile(filename, content, type = "text/plain;charset=utf-8") {
@@ -1331,14 +1392,38 @@ class NovelStudioApp {
     this.showToast(`Đã tải về file: ${filename}`, "success");
   }
 
-  getCleanAudioTxt() {
+  getCleanAudioTxt(options = {}) {
     if (!this.currentStory) return "";
-    let out = `${this.currentStory.title.toUpperCase()}\n\n`;
-    this.currentStory.chapters.forEach(ch => {
-      out += `CHƯƠNG ${ch.index}. ${ch.title.toUpperCase()}.\n\n`;
-      out += normalizeTextForAudio(ch.content || "") + "\n\n";
+
+    const removeTitles = options.removeTitles !== undefined ? options.removeTitles : this.audioRemoveTitles;
+    const singleParagraph = options.singleParagraph !== undefined ? options.singleParagraph : this.audioSingleParagraph;
+
+    const chunks = [];
+
+    // Chỉ thêm tên truyện nếu người dùng không muốn xóa tiêu đề
+    if (!removeTitles && this.currentStory.title) {
+      chunks.push(this.currentStory.title.toUpperCase());
+    }
+
+    (this.currentStory.chapters || []).forEach(ch => {
+      // Chỉ thêm tên chương nếu người dùng không muốn xóa tên chương
+      if (!removeTitles && (ch.title || ch.index)) {
+        chunks.push(`CHƯƠNG ${ch.index}. ${(ch.title || "").toUpperCase()}`.trim() + ".");
+      }
+
+      const cleaned = normalizeTextForAudio(ch.content || "");
+      if (cleaned) {
+        chunks.push(cleaned);
+      }
     });
-    return out.trim();
+
+    if (singleParagraph) {
+      // Gom tất cả thành 1 đoạn duy nhất: thay tất cả ngắt dòng thành khoảng trắng, xóa khoảng trắng thừa
+      return chunks.join(" ").replace(/\s+/g, " ").trim();
+    } else {
+      // Gom các đoạn văn liền mạch chuẩn TTS (giữ ngắt đoạn giữa các đoạn để TTS lấy hơi)
+      return chunks.join("\n\n").trim();
+    }
   }
 
   getFullMarkdown() {
@@ -1594,6 +1679,29 @@ class NovelStudioApp {
     // Step 4 Events
     document.getElementById("btnCleanForAudio").addEventListener("click", () => this.cleanTextForTTS());
     document.getElementById("btnRestoreOriginalText").addEventListener("click", () => this.restoreOriginalText());
+
+    // Audio format options
+    const chkRemoveTitles = document.getElementById("chkAudioRemoveTitles");
+    if (chkRemoveTitles) {
+      chkRemoveTitles.checked = this.audioRemoveTitles;
+      chkRemoveTitles.addEventListener("change", (e) => {
+        this.audioRemoveTitles = e.target.checked;
+        if (this.isAudioCleaned) {
+          this.renderReaderChaptersContent();
+        }
+      });
+    }
+
+    const chkSingleParagraph = document.getElementById("chkAudioSingleParagraph");
+    if (chkSingleParagraph) {
+      chkSingleParagraph.checked = this.audioSingleParagraph;
+      chkSingleParagraph.addEventListener("change", (e) => {
+        this.audioSingleParagraph = e.target.checked;
+        if (this.isAudioCleaned) {
+          this.renderReaderChaptersContent();
+        }
+      });
+    }
 
     // Theme toggles
     document.getElementById("btnThemeDark").addEventListener("click", (e) => this.setReaderTheme("dark", e.target));

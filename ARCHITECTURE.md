@@ -1,14 +1,15 @@
 # 🏛️ AI NOVEL STUDIO - HƯỚNG DẪN KIẾN TRÚC & CẤU TRÚC MÃ NGUỒN
-> **Dành cho Lập trình viên và các AI bảo trì / nâng cấp hệ thống sau này.**
+> **Dành cho Lập trình viên và các AI bảo trì / nâng cấp hệ thống.**
 
 ---
 
 ## 📌 1. Tổng Quan Dự Án
-**AI Novel Studio** là hệ thống toàn diện (All-in-One) phục vụ việc sáng tác, dịch thuật và sản xuất audio tiểu thuyết / kịch bản video:
+**AI Novel Studio** là hệ thống toàn diện (All-in-One) phục vụ việc sáng tác, dịch thuật và sản xuất audio/subtitles tiểu thuyết & kịch bản video:
 1. **🎬 Sáng Tác Tiểu Thuyết:** Quy trình 4 bước tạo truyện dài (10.000 – 20.000 từ) chuẩn phong cách Zhihu vả mặt.
-2. **🌐 Dịch Thuật Studio:** Dịch văn bản tiểu thuyết raw tiếng Trung/Anh và file phụ đề `.srt` sang tiếng Việt với công nghệ **Smart Chunking**.
+2. **🌐 Dịch Thuật Studio:** Dịch văn bản tiểu thuyết raw tiếng Trung/Anh và file phụ đề `.srt` sang tiếng Việt với công nghệ **Smart Chunking** & **Anti-skipping**.
 3. **🎙️ Tạo Audio Truyện (TTS):** Chuyển đổi văn bản thành giọng đọc tự nhiên đa luồng qua API Cloud của CapCut với 129+ giọng đọc và trình phát âm thanh tích hợp.
-4. **☁️ Neon PostgreSQL Cloud & Multi-Key:** Đồng bộ đám mây và chia tải token/hạn mức giữa nhiều Gemini API Key.
+4. **🎧 Nhận Dạng Âm Thanh (STT):** Nhận dạng audio/video bóc băng sang văn bản & file phụ đề `.srt` timecode chuẩn xác, hỗ trợ dịch song ngữ.
+5. **☁️ Neon PostgreSQL Cloud & Multi-Key:** Đồng bộ đám mây và chia tải token/hạn mức giữa nhiều Gemini API Key.
 
 ---
 
@@ -18,10 +19,11 @@ Dự án được cấu trúc theo mô hình **Controller – Service – Data �
 
 ```
 truyen-ngan/
-├── 📄 index.html                  # Giao diện chính (chứa 3 Workspace Tabs + Modals)
+├── 📄 index.html                  # Giao diện chính (chứa 4 Workspace Tabs + Modals)
 ├── 📄 styles.css                  # Hệ thống Design Tokens, Glassmorphism, Theme & Layout
 ├── 📄 server.js                   # Node.js Server phục vụ Static Files & Database API
 ├── 📄 ARCHITECTURE.md             # [Tài liệu này] Hướng dẫn cấu trúc & quy trình
+├── 📄 README.md                   # Giới thiệu & hướng dẫn triển khai
 │
 ├── 📁 js/
 │   ├── 📄 app.js                  # 🚀 Main Application Router & Global Coordinator
@@ -29,12 +31,14 @@ truyen-ngan/
 │   ├── 📁 controllers/            # 🎮 TẦNG ĐIỀU PHỐI GIAO DIỆN (UI CONTROLLERS)
 │   │   ├── 📄 novelController.js      # Quản lý 4 Bước Sáng Tác Tiểu Thuyết
 │   │   ├── 📄 translatorController.js # Quản lý Tab Dịch Thuật & Phụ đề SRT
-│   │   └── 📄 audioController.js      # Quản lý Tab Tạo Audio TTS & Player
+│   │   ├── 📄 audioController.js      # Quản lý Tab Tạo Audio TTS & Player
+│   │   └── 📄 sttController.js        # Quản lý Tab Nhận Dạng Giọng Nói STT & Phụ Đề
 │   │
 │   ├── 📁 services/               # ⚙️ TẦNG XỬ LÝ LOGIC NGẦM & GỌI API (SERVICES)
 │   │   ├── 📄 geminiService.js        # Gọi Google Gemini API, Multi-key rotation, Retry 429
 │   │   ├── 📄 translatorService.js    # SRT Parser/Serializer, Smart Chunking, Anti-skipping
 │   │   ├── 📄 audioTtsService.js      # Gọi CapCut TTS API, Đa luồng, Polling task, Tách câu <250 ký tự
+│   │   ├── 📄 sttService.js           # Gọi CapCut STT API, Async Polling, Tạo Subtitle SRT
 │   │   ├── 📄 storageService.js       # Quản lý Quota độc lập từng Model, LocalStorage, Thư viện
 │   │   └── 📄 authService.js          # Xác thực tài khoản & Đồng bộ Neon PostgreSQL
 │   │
@@ -67,7 +71,7 @@ truyen-ngan/
 ---
 
 ### 🌐 Tab 2: Dịch Thuật Studio (`js/controllers/translatorController.js`)
-* **Chế độ:** Phụ đề `.srt` hoặc Tiểu thuyết raw (tiếng Trung/Anh).
+* **Chế độ:** Phụ đề `.srt` hoặc Tiểu thuyết raw (tiếng Trung/Anh/Nhật/Hàn).
 * **Cơ chế Smart Chunking (`translatorService.js`):**
   * **Gemini (3.6 / 3.5 Flash Lite):** Gộp chunk lớn (1.800 từ / 80 dòng SRT) ➡️ Dịch trọn vẹn chỉ trong 1-2 request, tiết kiệm hạn mức tối đa.
   * **Gemma (4 31B / 26B):** Băm nhỏ an toàn (700 từ / 40 dòng SRT) ➡️ Tránh chạm trần 16k TPM.
@@ -87,12 +91,19 @@ truyen-ngan/
 
 ---
 
+### 🎧 Tab 4: Nhận Dạng Âm Thanh (STT) (`js/controllers/sttController.js`)
+* **Bóc Băng Đa Định Dạng:** Tiếp nhận tệp audio/video, tải lên và gọi CapCut Cloud STT API qua backend proxy `/api/stt/*`.
+* **Phân Tách Câu & Timecode:** Tính toán mốc thời gian chuẩn xác đến mili-giây cho từng phân đoạn thoại.
+* **Dịch Phụ Đề & Trình Phát:** Đồng bộ lời thoại và trình phát âm thanh, cho phép nghe lại từng đoạn thoại và tải file `.srt` / `.txt`.
+
+---
+
 ## ⚡ 4. Tầng Điều Phối Chính (`js/app.js`)
 
 `app.js` đóng vai trò là **Main Router & Coordinator**:
-1. Khởi tạo 3 Controllers con: `this.novelController`, `this.translatorController`, `this.audioController`.
-2. Điều phối chuyển đổi Workspace: `switchWorkspace("novel" | "translator" | "audio")`.
-3. Quản lý các Modal dùng chung: Cài đặt Gemini API, Thư viện truyện, Đăng nhập Neon Cloud.
+1. Khởi tạo 4 Controllers con: `this.novelController`, `this.translatorController`, `this.audioController`, `this.sttController`.
+2. Điều phối chuyển đổi Workspace: `switchWorkspace("novel" | "translator" | "audio" | "stt")`.
+3. Quản lý các Modal dùng chung: Cài đặt Gemini API, Thư viện truyện, Đăng nhập Neon Cloud, Bảng Admin.
 4. Cung cấp các hàm tiện ích toàn cục: `showToast()`, `countWords()`, `formatTokenCount()`, `triggerDownload()`.
 
 ---
@@ -108,6 +119,8 @@ Khi cần sửa đổi hoặc thêm tính năng mới:
 | **Sửa thuật toán dịch, chunking, prompt dịch** | [`js/services/translatorService.js`](file:///d:/truyen-ngan/js/services/translatorService.js) |
 | **Sửa giao diện / chức năng Tab Tạo Audio** | [`js/controllers/audioController.js`](file:///d:/truyen-ngan/js/controllers/audioController.js) |
 | **Sửa kết nối API CapCut TTS, ghép MP3** | [`js/services/audioTtsService.js`](file:///d:/truyen-ngan/js/services/audioTtsService.js) |
+| **Sửa giao diện / chức năng Tab Nhận Dạng STT** | [`js/controllers/sttController.js`](file:///d:/truyen-ngan/js/controllers/sttController.js) |
+| **Sửa logic gọi CapCut STT & tạo SRT** | [`js/services/sttService.js`](file:///d:/truyen-ngan/js/services/sttService.js) |
 | **Thêm / sửa giọng đọc mới** | [`js/data/Voice.json`](file:///d:/truyen-ngan/js/data/Voice.json) |
 | **Sửa logic Quota, Hạn mức Model, API Keys** | [`js/services/storageService.js`](file:///d:/truyen-ngan/js/services/storageService.js) |
 | **Sửa giao diện HTML tổng thể / Modal** | [`index.html`](file:///d:/truyen-ngan/index.html) |

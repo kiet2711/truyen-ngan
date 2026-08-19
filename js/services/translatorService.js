@@ -302,6 +302,9 @@ QUY TẮC BẮT BUỘC ĐỂ BẢN DỊCH KHÔNG BỊ THIẾU (CHỐNG TÓM TẮ
       // Ghi nhận Token Quota theo Model thời gian thực
       storageService.recordApiUsage(apiKey, usage, effectiveModel);
 
+      // Tự động xoay tua API Key tiếp theo cho chunk sau (Round-robin chia đều tải giữa các Key)
+      geminiService.rotateKey();
+
       const candidate = data.candidates?.[0];
       if (!candidate || !candidate.content?.parts?.[0]?.text) {
         throw new Error("API không trả về nội dung dịch hợp lệ.");

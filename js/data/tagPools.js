@@ -9,11 +9,61 @@ export const STORY_TONES = [
     icon: "🎲",
     name: "Để AI Tự Chọn Tông Giọng",
     subname: "Auto / AI Choice",
-    desc: "AI tự động đa dạng hóa: 3 bản đề xuất sẽ mang 3 phong cách khác biệt (Vả mặt, Ngọt sủng, Trinh thám/Hài hước) để bạn tha hồ chọn.",
+    desc: "AI tự động đa dạng hóa: 3 bản đề xuất sẽ mang 3 phong cách khác biệt từ 7 tông truyện lớn (Học đường, Điền văn, Chữa lành, Hài hước, Kịch tính, Ngọt sủng, Trinh thám).",
     badge: "Tự động 100%",
-    promptInstruction: `TỰ ĐỘNG LỰA CHỌN PHONG CÁCH TỐI ƯU:
-- Hãy tự do sáng tạo 3 bản đề xuất với 3 sắc thái và phong cách khác biệt rõ rệt (Bản 1: Kịch tính vả mặt cao trào; Bản 2: Tình cảm ngọt sủng/song cường; Bản 3: Trinh thám hồi hộp hoặc Hài hước ăn dưa).
-- Mỗi bản đề xuất tự xác định Tông truyện phù hợp nhất để người dùng dễ dàng lựa chọn.`
+    promptInstruction: `TỰ ĐỘNG LỰA CHỌN PHONG CÁCH TỐI ƯU TỪ 7 TÔNG TRUYỆN:
+- Hãy tự do sáng tạo 3 bản đề xuất với 3 sắc thái và phong cách khác biệt hoàn toàn, được chọn lọc từ 7 Tông truyện lớn: [Học Đường / Thanh Xuân], [Điền Văn / Làm Giàu], [Đời Thường / Chữa Lành], [Hài Hước / Ăn Dưa], [Kịch Tính / Vả Mặt], [Tình Cảm / Ngọt Sủng], [Trinh Thám / Ly Kỳ].
+- Tuyệt đối phân tích các điều người dùng CẦN TRÁNH trong ý tưởng để chọn 3 tông truyện phù hợp nhất mà không phạm vào điều cấm.`
+  },
+  {
+    id: "youth_campus",
+    icon: "🎓",
+    name: "Học Đường / Thanh Xuân",
+    subname: "Youth & Campus",
+    desc: "Thanh xuân vườn trường, thi cử phấn đấu, tình cảm trong sáng e ấp hoặc nghịch tập học bá, hoài niệm rực rỡ.",
+    badge: "Thanh xuân",
+    promptInstruction: `VĂN PHONG THANH XUÂN VƯỜN TRƯỜNG / HỌC ĐƯỜNG:
+- Bầu không khí trong trẻo, hoài niệm, ngập tràn hơi thở thanh xuân, tiếng ve sầu mùa hạ, sân bóng, bàn học, kỳ thi đại học (Cao khảo) hoặc giảng đường đại học.
+- Tuyến nhân vật: Học bá lạnh lùng hoặc ấm áp, học tra nghịch tập nỗ lực, bạn cùng bàn chân thành, thầy cô tâm huyết.
+- Tuyến tình cảm: Trong sáng, rung động tinh tế, song hướng thầm mến hoặc cùng nhau tiến bộ vì mục tiêu tương lai. TUYỆT ĐỐI KHÔNG dung tục, KHÔNG có mô-típ tổng tài hào môn cẩu huyết.
+- Xung đột tuổi trẻ: Áp lực thi cử, định hướng tương lai, tình bạn chân chính, sự trưởng thành sau những hiểu lầm ngây ngô.`
+  },
+  {
+    id: "cozy_farming",
+    icon: "🌾",
+    name: "Điền Văn / Làm Giàu",
+    subname: "Cozy Farming & Wealth",
+    desc: "Làm nông, buôn bán, kinh doanh ẩm thực, từng bước làm giàu, xây dựng cuộc sống an cư lạc nghiệp.",
+    badge: "Làm giàu",
+    promptInstruction: `VĂN PHONG ĐIỀN VĂN / LÀM GIÀU BÌNH DỊ:
+- Từng bước gây dựng sự nghiệp, kinh doanh buôn bán hoặc phát triển trồng trọt chăn nuôi, ẩm thực ngon mắt.
+- Cuộc sống gia đình ấm êm thuận hòa, các nhân vật đoàn kết cùng nhau làm giàu, tích lũy của cải.
+- Không khí gần gũi, thực tế, tạo cảm giác thành tựu và an yên sau mỗi nỗ lực.`
+  },
+  {
+    id: "healing_life",
+    icon: "☕",
+    name: "Đời Thường / Chữa Lành",
+    subname: "Slice of Life / Healing",
+    desc: "Nhịp sống bình yên, ấm áp đời thường, tình thân bạn bè, xoa dịu tổn thương, nhẹ nhàng sâu lắng.",
+    badge: "Chữa lành",
+    promptInstruction: `VĂN PHONG ĐỜI THƯỜNG / CHỮA LÀNH (SLICE OF LIFE / HEALING):
+- Tập trung vào cuộc sống thường nhật, những chi tiết sinh hoạt bình dị, hương vị khói lửa nhân gian.
+- Nhấn mạnh tình cảm gia đình, tình bạn chân thành, sự sẻ chia xoa dịu những vết thương tâm hồn.
+- Giọng văn nhẹ nhàng, ấm áp, thư thái, mang lại sự bình yên và năng lượng tích cực cho người đọc.
+- TUYỆT ĐỐI KHÔNG CÓ đấu đá độc hại, KHÔNG có vả mặt đao to búa lớn hay drama mưu mô hiểm độc.`
+  },
+  {
+    id: "humorous_comedy",
+    icon: "😂",
+    name: "Hài Hước / Ăn Dưa",
+    subname: "Comedy / Fun Drama",
+    desc: "Đối thoại dí dỏm, tình huống dở khóc dở cười, nhân vật lầy lội, giải trí thả ga sảng khoái.",
+    badge: "Hài hước",
+    promptInstruction: `VĂN PHONG HÀI HƯỚC / ĂN DƯA HÓNG BIẾN (COMEDY):
+- Tình huống trớ trêu, dở khóc dở cười, đối thoại duyên dáng, mặn mà, đầy bất ngờ.
+- Nhân vật có nét tính cách thú vị, độc lạ, 'cá mặn' thích nằm yên hoặc chuyên gia 'hóng hớt drama'.
+- Mang lại tiếng cười sảng khoái, không khí vui tươi, lạc quan và hài hước giải trí.`
   },
   {
     id: "dramatic",
@@ -38,43 +88,6 @@ export const STORY_TONES = [
 - Tập trung vào cảm xúc rung động, sự thấu hiểu, chở che và cưng chiều lẫn nhau giữa các nhân vật chính.
 - Tương tác đối thoại ngọt ngào, duyên dáng, những khoảnh khắc tình tứ và sự quan tâm tinh tế khiến độc giả rung động.
 - TUYỆT ĐỐI KHÔNG ngược tâm vô lý, KHÔNG có hiểu lầm dây dưa gây ức chế, kết thúc có hậu (HE) trọn vẹn và hạnh phúc.`
-  },
-  {
-    id: "healing_life",
-    icon: "☕",
-    name: "Đời Thường / Chữa Lành",
-    subname: "Slice of Life / Healing",
-    desc: "Nhịp sống bình yên, ấm áp đời thường, tình thân bạn bè, xoa dịu tổn thương, nhẹ nhàng sâu lắng.",
-    badge: "Chữa lành",
-    promptInstruction: `VĂN PHONG ĐỜI THƯỜNG / CHỮA LÀNH (SLICE OF LIFE / HEALING):
-- Tập trung vào cuộc sống thường nhật, những chi tiết sinh hoạt bình dị, hương vị khói lửa nhân gian.
-- Nhấn mạnh tình cảm gia đình, tình bạn chân thành, sự sẻ chia xoa dịu những vết thương tâm hồn.
-- Giọng văn nhẹ nhàng, ấm áp, thư thái, mang lại sự bình yên và năng lượng tích cực cho người đọc.
-- TUYỆT ĐỐI KHÔNG CÓ đấu đá độc hại, KHÔNG có vả mặt đao to búa lớn hay drama mưu mô hiểm độc.`
-  },
-  {
-    id: "cozy_farming",
-    icon: "🌾",
-    name: "Điền Văn / Làm Giàu",
-    subname: "Cozy Farming & Wealth",
-    desc: "Làm nông, buôn bán, kinh doanh ẩm thực, từng bước làm giàu, xây dựng cuộc sống an cư lạc nghiệp.",
-    badge: "Làm giàu",
-    promptInstruction: `VĂN PHONG ĐIỀN VĂN / LÀM GIÀU BÌNH DỊ:
-- Từng bước gây dựng sự nghiệp, kinh doanh buôn bán hoặc phát triển trồng trọt chăn nuôi, ẩm thực ngon mắt.
-- Cuộc sống gia đình ấm êm thuận hòa, các nhân vật đoàn kết cùng nhau làm giàu, tích lũy của cải.
-- Không khí gần gũi, thực tế, tạo cảm giác thành tựu và an yên sau mỗi nỗ lực.`
-  },
-  {
-    id: "humorous_comedy",
-    icon: "😂",
-    name: "Hài Hước / Ăn Dưa",
-    subname: "Comedy / Fun Drama",
-    desc: "Đối thoại dí dỏm, tình huống dở khóc dở cười, nhân vật lầy lội, giải trí thả ga sảng khoái.",
-    badge: "Hài hước",
-    promptInstruction: `VĂN PHONG HÀI HƯỚC / ĂN DƯA HÓNG BIẾN (COMEDY):
-- Tình huống trớ trêu, dở khóc dở cười, đối thoại duyên dáng, mặn mà, đầy bất ngờ.
-- Nhân vật có nét tính cách thú vị, độc lạ, 'cá mặn' thích nằm yên hoặc chuyên gia 'hóng hớt drama'.
-- Mang lại tiếng cười sảng khoái, không khí vui tươi, lạc quan và hài hước giải trí.`
   },
   {
     id: "mystery_suspense",

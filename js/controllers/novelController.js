@@ -437,15 +437,19 @@ export class NovelController {
       const motif = concept.motifAndConflict || concept.conflict || "";
       const summary = concept.plotSummary || concept.premise || "";
       const twist = concept.climaxTwist || concept.twist || "";
+      const toneBadgeText = concept.toneName || (concept.toneId ? STORY_TONES.find(t => t.id === concept.toneId)?.name : "");
 
       card.innerHTML = `
-        <div class="concept-number-badge">Kịch Bản #${index + 1}</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+          <div class="concept-number-badge">Kịch Bản #${index + 1}</div>
+          ${toneBadgeText ? `<span class="badge" style="background: rgba(236, 72, 153, 0.15); color: var(--accent-pink); font-size: 11px; padding: 2px 10px; border-radius: 99px; border: 1px solid rgba(236, 72, 153, 0.35); font-weight: 600;">🎭 ${toneBadgeText}</span>` : ""}
+        </div>
         <div class="concept-title">${title}</div>
         ${hook ? `<div class="concept-hook">"${hook}"</div>` : ""}
         ${setting ? `<div class="concept-detail-item"><strong>🏞️ Bối cảnh & Nhân vật:</strong> ${setting}</div>` : ""}
         ${motif ? `<div class="concept-detail-item"><strong>⚔️ Motif xung đột:</strong> ${motif}</div>` : ""}
         ${summary ? `<div class="concept-detail-item"><strong>📖 Tóm tắt diễn biến:</strong> ${summary}</div>` : ""}
-        ${twist ? `<div class="concept-detail-item" style="color: #f472b6;"><strong>🎭 Cú twist vả mặt:</strong> ${twist}</div>` : ""}
+        ${twist ? `<div class="concept-detail-item" style="color: #f472b6;"><strong>🎭 Cao trào / Twist:</strong> ${twist}</div>` : ""}
         <button class="btn ${isSelected ? 'btn-success' : 'btn-secondary'} btn-select-concept" style="width: 100%; margin-top: 12px;">
           ${isSelected ? '✓ Đang Chọn Bản Này' : '👉 Chọn Bản Này'}
         </button>
@@ -516,11 +520,18 @@ export class NovelController {
     const wordsPerChapter = params?.wordsPerChapter || parseInt(document.getElementById("wordsPerChapterSelect")?.value, 10) || 2000;
     const targetWords = chapterCount * wordsPerChapter;
 
+    let effectiveTone = this.selectedTone;
+    if (effectiveTone === "auto" && concept) {
+      if (concept.toneId && concept.toneId !== "auto") {
+        effectiveTone = concept.toneId;
+      }
+    }
+
     this.currentStory = {
       id: `story_${Date.now()}`,
       title: concept.title,
       concept: concept,
-      params: { ...(params || {}), selectedTone: this.selectedTone, chapterCount, wordsPerChapter, targetWords },
+      params: { ...(params || {}), selectedTone: effectiveTone, chapterCount, wordsPerChapter, targetWords },
       outline: null,
       characterBible: [],
       chapters: [],

@@ -43,6 +43,40 @@ ${toneObj.promptInstruction}
    - THANG LEO THANG XUNG ĐỘT (ESCALATION): Mỗi diễn biến tiếp theo phải thu hẹp một đường lui an toàn của nhân vật chính hoặc nâng cao cái giá phải trả.`;
 }
 
+/**
+ * Tự động nhận diện Tông Truyện cụ thể từ Concept đã chọn hoặc Tone ID
+ */
+export function resolveToneObject(toneId, concept = null) {
+  if (toneId && toneId !== "auto") {
+    const found = STORY_TONES.find(t => t.id === toneId);
+    if (found) return found;
+  }
+  
+  if (concept) {
+    if (concept.toneId) {
+      const found = STORY_TONES.find(t => t.id === concept.toneId);
+      if (found && found.id !== "auto") return found;
+    }
+    if (concept.toneName || concept.tone) {
+      const name = String(concept.toneName || concept.tone).toLowerCase();
+      const found = STORY_TONES.find(t => t.id !== "auto" && (name.includes(t.id) || t.name.toLowerCase().includes(name) || name.includes(t.name.toLowerCase())));
+      if (found) return found;
+    }
+    if (concept.settingAndCharacters) {
+      const text = String(concept.settingAndCharacters).toLowerCase();
+      if (text.includes("học đường") || text.includes("thanh xuân") || text.includes("vườn trường") || text.includes("học bá")) return STORY_TONES.find(t => t.id === "youth_campus");
+      if (text.includes("điền văn") || text.includes("làm giàu")) return STORY_TONES.find(t => t.id === "cozy_farming");
+      if (text.includes("chữa lành") || text.includes("đời thường")) return STORY_TONES.find(t => t.id === "healing_life");
+      if (text.includes("hài hước") || text.includes("ăn dưa")) return STORY_TONES.find(t => t.id === "humorous_comedy");
+      if (text.includes("trinh thám") || text.includes("phá án") || text.includes("ly kỳ")) return STORY_TONES.find(t => t.id === "mystery_suspense");
+      if (text.includes("ngọt sủng") || text.includes("tình cảm")) return STORY_TONES.find(t => t.id === "sweet_romance");
+      if (text.includes("kịch tính") || text.includes("vả mặt")) return STORY_TONES.find(t => t.id === "dramatic");
+    }
+  }
+
+  return STORY_TONES.find(t => t.id === "dramatic") || STORY_TONES[1] || STORY_TONES[0];
+}
+
 class GeminiService {
   constructor() {
     this.currentKeyIndex = 0;
@@ -153,36 +187,47 @@ class GeminiService {
 Nhiệm vụ của bạn là sáng tạo ra ĐÚNG 3 BẢN ĐỀ XUẤT CỐT TRUYỆN (Concepts / Pitch Options) mang tính kịch tính đỉnh cao và hấp dẫn cho người đọc.
 
 ${isAutoTone 
-  ? `YÊU CẦU ĐA DẠNG HÓA TÔNG TRUYỆN (CHẾ ĐỘ TỰ ĐỘNG):
-Người dùng muốn để AI tự do quyết định. Hãy sáng tạo 3 bản đề xuất với 3 SẮC THÁI & PHONG CÁCH KHÁC BIỆT HOÀN TOÀN:
-- Bản đề xuất #1: Kịch tính cao / Vả mặt cực mạnh / Đấu trí gay gắt (Zhihu Short Drama).
-- Bản đề xuất #2: Tình cảm lãng mạn / Ngọt sủng / Song hướng thầm mến hoặc Cưới trước yêu sau.
-- Bản đề xuất #3: Trinh thám ly kỳ / Hắc ám phản chuyển hoặc Hài hước ăn dưa giải trí.
-(Trong phần Bối cảnh & Nhân vật của từng bản, hãy ghi rõ phong cách thể loại tương ứng để người dùng dễ nhận biết).`
+  ? `YÊU CẦU ĐA DẠNG HÓA TÔNG TRUYỆN (CHẾ ĐỘ TỰ ĐỘNG TỪ 7 TÔNG TRUYỆN):
+Người dùng để AI tự do quyết định tông giọng. Hãy sáng tạo 3 bản đề xuất mang 3 TÔNG TRUYỆN KHÁC BIỆT HOÀN TOÀN, được chọn lọc linh hoạt từ 7 Tông truyện lớn sau:
+1. [youth_campus] Học Đường / Thanh Xuân: Thanh xuân vườn trường, thi cử phấn đấu, tình cảm trong sáng e ấp, học bá nghịch tập, không khí học đường trong trẻo.
+2. [cozy_farming] Điền Văn / Làm Giàu: Mộc mạc, làm ăn kinh doanh buôn bán/nông nghiệp, xây dựng gia đình và cơ nghiệp.
+3. [healing_life] Đời Thường / Chữa Lành: Bình yên ấm áp, tình thân bạn bè, xoa dịu tổn thương, sâu lắng.
+4. [humorous_comedy] Hài Hước / Ăn Dưa: Đối thoại dí dỏm, tình huống trớ trêu dở khóc dở cười, giải trí vui tươi sảng khoái.
+5. [dramatic] Kịch Tính / Vả Mặt: Đấu trí gay gắt, bóc trần bộ mặt giả tạo, vả mặt sảng khoái, plot twist giật gân.
+6. [sweet_romance] Tình Cảm / Ngọt Sủng: Lãng mạn, cưng chiều, tương tác rung động tinh tế, không ngược, HE mỹ mãn.
+7. [mystery_suspense] Trinh Thám / Ly Kỳ: Suy luận logic, vén màn bí mật từng lớp, phá án hồi hộp.
+
+QUY TẮC CHỌN TÔNG CỰC KỲ QUAN TRỌNG:
+- Phân tích kỹ nội dung "Ý tưởng / Tình huống người dùng tự viết". Nếu người dùng yêu cầu TRÁNH hoặc KHÔNG MUỐN yếu tố nào (ví dụ: tránh tổng tài, tránh ngôn tình sướt mướt, tránh phá án máu me...), BẮT BUỘC LOẠI TRỪ các tông/yếu tố đó và linh hoạt chọn 3 tông truyện phù hợp nhất trong số các tông còn lại (ví dụ: ưu tiên Học Đường Thanh Xuân, Điền Văn Làm Giàu, Đời Thường Chữa Lành, Hài Hước Ăn Dưa...).
+- Cả 3 bản đề xuất phải mang 3 tông truyện khác nhau để người dùng có nhiều lựa chọn phong phú.`
   : `YÊU CẦU BÁM SÁT TÔNG TRUYỆN: Cả 3 bản đề xuất phải bám sát phong cách "${toneObj.name}" (${toneObj.desc}).`
 }
 
 CÔNG THỨC 5 LỚP KỊCH BẢN BẮT BUỘC TRONG TỪNG ĐỀ XUẤT:
-1. MÓC CÂU (Hook): Đặt nhân vật vào ngay một tình huống nguy cơ, sỉ nhục, bất thường hoặc tổn thất không thể đảo ngược (1-2 câu giật gân).
-2. MỐI QUAN HỆ ÁP LỰC CAO (Pressure Relationship): Thiết lập mối quan hệ ngột ngạt (Thật giả thiên kim, Tiền phu/Tiền thê, Thế thân, Ở rể, Nhận nhầm ân nhân, Kẻ thù hợp tác...).
-3. VŨ ĐÀI XUNG ĐỘT CÔNG KHAI (Conflict Arena): Mâu thuẫn bùng nổ trước đám đông (Gia yến, Hủy hôn, Đấu giá, Thẩm tra công khai, Livestream, Phòng cấp cứu...).
+1. MÓC CÂU (Hook): Đặt nhân vật vào ngay một tình huống nguy cơ, sỉ nhục, bất thường hoặc tổn thất không thể đảo ngược (1-2 câu giật gân / cuốn hút).
+2. MỐI QUAN HỆ ÁP LỰC CAO (Pressure Relationship): Thiết lập mối quan hệ ngột ngạt hoặc gắn kết đặc sắc (Thật giả thiên kim, Tiền phu/Tiền thê, Thế thân, Ở rể, Bạn cùng bàn đối đầu, Học bá x Học tra, Đồng hành lập nghiệp...).
+3. VŨ ĐÀI XUNG ĐỘT CÔNG KHAI (Conflict Arena): Mâu thuẫn bùng nổ trước đám đông hoặc thử thách sinh kế (Gia yến, Hủy hôn, Đấu giá, Thẩm tra công khai, Kỳ thi lớn, Bảng vinh danh, Hội trường...).
 4. MẠCH LEO THANG (Plot Summary): 3-4 câu tóm tắt mạch truyện, mỗi bước tăng thêm cái giá phải trả và đóng lại lối thoát an toàn.
-5. CÚ TWIST / CAO TRÀO (Climax Twist): Đòn lật kèo vả mặt sảng khoái hoặc nút thắt cảm xúc bùng nổ.
+5. CÚ TWIST / CAO TRÀO (Climax Twist): Đòn lật kèo vả mặt sảng khoái hoặc nút thắt cảm xúc bùng nổ / quả ngọt thành công.
 
 BẮT BUỘC trả về JSON thuần túy theo cấu trúc:
 {
   "concepts": [
     {
       "id": 1,
+      "toneId": "youth_campus | cozy_farming | healing_life | humorous_comedy | dramatic | sweet_romance | mystery_suspense",
+      "toneName": "Tên Tông Truyện tương ứng (VD: Học Đường / Thanh Xuân)",
       "title": "Tựa đề truyện cuốn hút, hợp thể loại",
       "hook": "Câu mở đầu / tình huống mở màn thu hút người đọc ngay lập tức (1-2 câu giật gân)",
-      "settingAndCharacters": "Bối cảnh & Tên nhân vật Hán Việt chuẩn kèm Mối quan hệ áp lực cao (VD: [Kịch tính vả mặt] Cố gia Kinh Đô, Thẩm Chiêu Chiêu (Thiên kim thật) - Cố Hoài An (Tổng tài lạnh lùng))",
-      "motifAndConflict": "Vũ đài xung đột công khai & Động cơ cốt truyện chủ đạo",
+      "settingAndCharacters": "Bối cảnh & Tên nhân vật Hán Việt chuẩn kèm Mối quan hệ áp lực cao (VD: Thôn Hạnh Hoa, Cố Hoài An (Thợ săn trầm mặc) - Thẩm Chiêu Chiêu (Tiểu tức phụ lanh lợi))",
+      "motifAndConflict": "Vũ đài xung đột & Động cơ cốt truyện chủ đạo",
       "plotSummary": "Tóm tắt mạch leo thang 3-4 câu theo đúng tông truyện đã chọn",
-      "climaxTwist": "Cú twist vả mặt sảng khoái / Điểm cao trào cảm xúc nhất"
+      "climaxTwist": "Cú twist / Điểm cao trào cảm xúc nhất"
     },
     {
       "id": 2,
+      "toneId": "...",
+      "toneName": "...",
       "title": "...",
       "hook": "...",
       "settingAndCharacters": "...",
@@ -192,6 +237,8 @@ BẮT BUỘC trả về JSON thuần túy theo cấu trúc:
     },
     {
       "id": 3,
+      "toneId": "...",
+      "toneName": "...",
       "title": "...",
       "hook": "...",
       "settingAndCharacters": "...",
@@ -203,18 +250,18 @@ BẮT BUỘC trả về JSON thuần túy theo cấu trúc:
 }`;
 
     const userPrompt = `Hãy tạo 3 bản đề xuất cốt truyện từ các yêu cầu sau:
-- Định hướng Tông truyện: ${isAutoTone ? "Để AI tự do sáng tạo 3 màu sắc khác nhau" : `${toneObj.name} (${toneObj.desc})`}
+- Định hướng Tông truyện: ${isAutoTone ? "Để AI tự do sáng tạo 3 màu sắc khác nhau trong 7 tông truyện lớn" : `${toneObj.name} (${toneObj.desc})`}
 - Yêu cầu Trope: ${hasTags ? `Các Trope đã chọn: ${params.selectedTags.join(", ")}` : "Người dùng không chọn thẻ nào -> AI tự do tuyển chọn Trope & Vũ đài xung đột hấp dẫn nhất."}
-${params.userPremise ? `- Ý tưởng / Tình huống người dùng tự viết: "${params.userPremise}"` : "- Ý tưởng: Người dùng không nhập bất kỳ ý tưởng nào -> AI tự do sáng tạo 100% từ con số 0 theo các motif thịnh hành nhất."}
+${params.userPremise ? `- Ý tưởng / Tình huống người dùng tự viết (ĐẶC BIỆT CHÚ Ý CÁC ĐIỀU CẦN TRÁNH NẾU CÓ): "${params.userPremise}"` : "- Ý tưởng: Người dùng không nhập bất kỳ ý tưởng nào -> AI tự do sáng tạo 100% từ con số 0 theo các motif thịnh hành nhất."}
 - Số lượng chương dự kiến: ${params.chapterCount || 6} chương.
 
-Nhắc lại: Tuyệt đối không dùng tên hay địa điểm Việt Nam. Sử dụng tên Hán Việt Trung Quốc chuẩn. Áp dụng quy chuẩn Khử Mùi AI và Công thức 5 lớp kịch bản.`;
+Nhắc lại: Tuyệt đối không dùng tên hay địa điểm Việt Nam. Sử dụng tên Hán Việt Trung Quốc chuẩn. Áp dụng quy chuẩn Khử Mùi AI và Công thức 5 lớp kịch bản. Tuân thủ nghiêm ngặt các điều cần tránh mà người dùng đã nêu trong ý tưởng.`;
 
     return this.callWithRetry(async () => {
       const apiKey = this.getActiveKey();
       const url = `${BASE_API_URL}/${model}:generateContent?key=${apiKey}`;
 
-      if (onProgress) onProgress(isAutoTone ? "AI đang sáng tạo 3 bản đề xuất đa dạng phong cách..." : `AI đang sáng tạo 3 bản đề xuất cốt truyện (${toneObj.name})...`);
+      if (onProgress) onProgress(isAutoTone ? "AI đang sáng tạo 3 bản đề xuất đa dạng phong cách từ 7 tông truyện..." : `AI đang sáng tạo 3 bản đề xuất cốt truyện (${toneObj.name})...`);
 
       const response = await fetch(url, {
         method: "POST",
@@ -261,9 +308,8 @@ Nhắc lại: Tuyệt đối không dùng tên hay địa điểm Việt Nam. S�
   async generateOutlineFromConcept(params, onProgress = null) {
     const settings = storageService.getSettings();
     const model = settings.model || "gemini-3.6-flash";
-    const toneId = params.selectedTone || "dramatic";
-    const toneObj = STORY_TONES.find(t => t.id === toneId) || STORY_TONES[0];
-    const systemBase = getBaseSystemPrompt(toneId);
+    const toneObj = resolveToneObject(params.selectedTone, params.chosenConcept);
+    const systemBase = getBaseSystemPrompt(toneObj.id);
 
     const systemPrompt = `${systemBase}
 Nhiệm vụ của bạn là mở rộng BẢN CONCEPT CỐT TRUYỆN ĐÃ CHỌN thành DÀN Ý CHI TIẾT (Outline) gồm ${params.chapterCount || 6} chương và BẢNG NHÂN VẬT (Story Bible) sống động theo đúng phong cách "${toneObj.name}".
@@ -319,7 +365,7 @@ Hãy xuất dữ liệu JSON Dàn ý chi tiết và Bảng nhân vật ngay bây
       const apiKey = this.getActiveKey();
       const url = `${BASE_API_URL}/${model}:generateContent?key=${apiKey}`;
 
-      if (onProgress) onProgress("Đang xây dựng Dàn ý chi tiết và Bảng nhân vật...");
+      if (onProgress) onProgress(`Đang xây dựng Dàn ý chi tiết và Bảng nhân vật (${toneObj.name})...`);
 
       const response = await fetch(url, {
         method: "POST",
@@ -364,9 +410,8 @@ Hãy xuất dữ liệu JSON Dàn ý chi tiết và Bảng nhân vật ngay bây
     const settings = storageService.getSettings();
     const model = settings.model || "gemini-3.6-flash";
     const currentChapter = story.chapters[chapterIndex];
-    const toneId = story.params?.selectedTone || "dramatic";
-    const toneObj = STORY_TONES.find(t => t.id === toneId) || STORY_TONES[0];
-    const systemBase = getBaseSystemPrompt(toneId);
+    const toneObj = resolveToneObject(story.params?.selectedTone, story.concept);
+    const systemBase = getBaseSystemPrompt(toneObj.id);
 
     const pastSummaries = story.chapters
       .slice(0, chapterIndex)

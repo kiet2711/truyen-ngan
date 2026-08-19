@@ -26,8 +26,9 @@ export class TranslatorService {
   parseSrt(srtContent) {
     if (!srtContent || typeof srtContent !== "string") return [];
     
-    // Chuẩn hóa xuống dòng
-    const normalized = srtContent.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+    // Loại bỏ codeblock markdown nếu có
+    const cleaned = srtContent.replace(/```(?:srt)?/gi, "").replace(/```/g, "");
+    const normalized = cleaned.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
     const blocks = normalized.split(/\n\s*\n+/);
     const items = [];
 
@@ -39,7 +40,7 @@ export class TranslatorService {
 
         // Nếu dòng đầu là số thứ tự
         if (/^\d+$/.test(lines[0].trim())) {
-          id = parseInt(lines[0].trim(), 10) || (idx + 1);
+          id = parseInt(lines[0].trim(), 10);
           timecodeLineIndex = 1;
         }
 
@@ -47,14 +48,12 @@ export class TranslatorService {
         if (timecode.includes("-->")) {
           const textLines = lines.slice(timecodeLineIndex + 1);
           const originalText = textLines.join("\n").trim();
-          if (originalText) {
-            items.push({
-              id,
-              timecode,
-              originalText,
-              translatedText: ""
-            });
-          }
+          items.push({
+            id: isNaN(id) ? (idx + 1) : id,
+            timecode,
+            originalText: originalText || "",
+            translatedText: ""
+          });
         }
       }
     });
@@ -72,11 +71,11 @@ export class TranslatorService {
     if (!Array.isArray(items) || items.length === 0) return "";
 
     return items.map((item, idx) => {
-      const id = idx + 1;
+      const id = item.id !== undefined ? item.id : (idx + 1);
       let text = item.translatedText || item.originalText || "";
 
       if (mode === "bilingual") {
-        if (item.originalText && item.translatedText) {
+        if (item.originalText && item.translatedText && item.originalText !== item.translatedText) {
           text = `${item.translatedText}\n${item.originalText}`;
         } else {
           text = item.translatedText || item.originalText;
@@ -92,24 +91,24 @@ export class TranslatorService {
   // ==================== SMART CHUNKING ENGINE ====================
 
   /**
-   * Xác định kích thước chunk tối ưu theo Model
-   * - Gemini (3.6 / 3.5 Flash): TPM 250k rộng -> Gộp 300 - 400 dòng SRT / 4000 từ (Tốn 1-2 request)
-   * - Gemma (4 31B / 26B): TPM 16k hẹp -> Chia nhỏ 45 - 55 dòng SRT / 800 từ (Tận dụng 14.400 RPD)
+   * Kích thước chunk tối ưu chống bỏ sót nội dung và an toàn TPM:
+   * - Gemini (3.6 / 3.5 Flash): 80 dòng SRT / 1.800 từ (đảm bảo AI dịch đủ 100% không tóm tắt)
+   * - Gemma (4 31B / 26B): 40 dòng SRT / 700 từ (an toàn 16k TPM)
    */
   getChunkConfig(modelId, type = "srt") {
     const isGemma = modelId && modelId.toLowerCase().includes("gemma");
 
     if (type === "srt") {
       return {
-        chunkSize: isGemma ? 50 : 350, // số dòng phụ đề mỗi request
-        delayMs: isGemma ? 1200 : 2500, // delay giữa các chunk
+        chunkSize: isGemma ? 40 : 80, // số dòng phụ đề mỗi request
+        delayMs: isGemma ? 1200 : 2000,
         strategy: isGemma ? "gemma-safe-tpm" : "gemini-min-requests"
       };
     } else {
       // Tiểu thuyết / văn bản raw
       return {
-        chunkSize: isGemma ? 900 : 4000, // số từ mỗi request
-        delayMs: isGemma ? 1200 : 2500,
+        chunkSize: isGemma ? 700 : 1800, // số chữ/từ mỗi request để AI không tóm tắt
+        delayMs: isGemma ? 1200 : 2000,
         strategy: isGemma ? "gemma-safe-tpm" : "gemini-min-requests"
       };
     }
@@ -236,18 +235,20 @@ export class TranslatorService {
       return `Bạn là chuyên gia dịch phụ đề video và phim ngắn Trung - Việt hàng đầu thế giới.
 ${styleGuide}
 
-QUY TẮC BẮT BUỘC KHI DỊCH PHỤ ĐỀ SRT:
-1. TUYỆT ĐỐI BẢO TOÀN 100% CẤU TRÚC SRT: Giữ nguyên số thứ tự (ID) và mốc thời gian (Timecode).
-2. CHỈ DỊCH DÒNG NỘI DUNG VĂN BẢN sang tiếng Việt, không dịch hay sửa đổi bất kỳ số hay dấu nào trên dòng Timecode.
-3. KHÔNG thêm lời chào, lời giải thích hay bất kỳ ký tự nào ngoài định dạng SRT chuẩn.`;
+QUY TẮC BẮT BUỘC ĐỂ KHÔNG BỊ DỊCH THIẾU HOẶC MẤT DÒNG PHỤ ĐỀ:
+1. TUYỆT ĐỐI BẢO TOÀN 100% CẤU TRÚC SRT: Đầu vào có bao nhiêu khối phụ đề (ID từ 1 đến N) thì đầu ra BẮT BUỘC PHẢI CÓ ĐỦ CHÍNH XÁC bấy nhiêu khối phụ đề.
+2. Giữ nguyên số thứ tự ID và dòng Timecode. Dưới mỗi timecode là đúng 1 bản dịch tiếng Việt tương ứng.
+3. KHÔNG gộp 2 khối phụ đề thành 1, KHÔNG bỏ qua bất kỳ khối phụ đề nào.
+4. KHÔNG thêm lời chào, lời giải thích hay code block ngoài định dạng SRT chuẩn.`;
     }
 
     return `Bạn là chuyên gia dịch thuật văn học và tiểu thuyết Trung - Việt hàng đầu thế giới.
 ${styleGuide}
-QUY TẮC:
-- Dịch hoàn chỉnh toàn bộ nội dung sang tiếng Việt trôi chảy.
-- Giữ nguyên cách ngắt đoạn, không tóm tắt hay lược bỏ câu từ.
-- Không thêm bất kỳ lời dẫn hay giải thích nào ngoài nội dung đã dịch.`;
+QUY TẮC BẮT BUỘC ĐỂ BẢN DỊCH KHÔNG BỊ THIẾU (CHỐNG TÓM TẮT):
+1. DỊCH ĐẦY ĐỦ 100% TOÀN BỘ VĂN BẢN: Bắt buộc dịch trọn vẹn từng câu, từng đoạn từ đầu đến cuối. Tuyệt đối KHÔNG ĐƯỢC TÓM TẮT, KHÔNG ĐƯỢC CẮT BỚT, KHÔNG ĐƯỢC BỎ SÓT bất kỳ câu văn, lời thoại hay đoạn miêu tả nào dù là nhỏ nhất.
+2. Giữ nguyên toàn bộ cấu trúc đoạn văn của bản gốc (đoạn nào dịch ra đoạn đó).
+3. Dịch thoát nghĩa, câu từ mượt mà, thuần Việt, chuẩn ngữ pháp tiếng Việt.
+4. KHÔNG thêm bất kỳ lời dẫn, ghi chú hay giải thích nào ngoài nội dung đã dịch.`;
   }
 
   /**
@@ -270,7 +271,7 @@ QUY TẮC:
           }
         ],
         generationConfig: {
-          temperature: 0.3, // Nhiệt độ thấp giúp bản dịch chuẩn xác, không chế bậy
+          temperature: 0.2, // Nhiệt độ thấp giúp bản dịch bám sát 100% nguyên tác, không tóm tắt
           maxOutputTokens: 8192
         }
       };
@@ -357,9 +358,19 @@ QUY TẮC:
 
         // Ghép bản dịch vào từng item tương ứng
         chunk.forEach((item, cIdx) => {
-          const match = translatedItems.find(t => t.id === item.id) || translatedItems[cIdx];
+          // Ưu tiên 1: Khớp theo ID
+          let match = translatedItems.find(t => t.id === item.id);
+          // Ưu tiên 2: Khớp theo Timecode
+          if (!match) {
+            match = translatedItems.find(t => t.timecode === item.timecode);
+          }
+          // Ưu tiên 3: Khớp theo thứ tự dòng trong chunk
+          if (!match && translatedItems[cIdx]) {
+            match = translatedItems[cIdx];
+          }
+
           if (match && match.originalText) {
-            item.translatedText = match.originalText; // Nội dung đã dịch
+            item.translatedText = match.originalText;
           } else if (match && match.translatedText) {
             item.translatedText = match.translatedText;
           }
@@ -436,7 +447,7 @@ QUY TẮC:
         });
       }
 
-      const prompt = `Dịch trọn vẹn văn bản tiểu thuyết sau đây sang tiếng Việt:\n\n${chunkText}`;
+      const prompt = `Dịch ĐẦY ĐỦ 100% toàn bộ văn bản tiểu thuyết sau đây sang tiếng Việt (TUYỆT ĐỐI KHÔNG TÓM TẮT, KHÔNG CẮT BỚT BẤT KỲ CÂU NÀO):\n\n${chunkText}`;
 
       try {
         const result = await this.callTranslateApi(prompt, systemPrompt, modelId);
@@ -472,6 +483,7 @@ QUY TẮC:
         currentChunkIndex: chunks.length,
         totalChunks: chunks.length,
         progressPercent: 100,
+        accumulatedText: fullTranslatedText,
         message: `Đã dịch hoàn tất toàn bộ văn bản!`
       });
     }

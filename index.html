@@ -79,9 +79,25 @@
       </div>
     </header>
 
-    <!-- ==================== STEP WIZARD BAR ==================== -->
-    <nav class="step-indicator-bar" id="stepIndicatorBar">
-      <div class="step-pill active" data-step="1" id="stepPill1">
+    <!-- ==================== MAIN WORKSPACE NAVIGATION TABS ==================== -->
+    <div class="workspace-nav-bar">
+      <button class="workspace-tab active" id="tabNavNovelStudio">
+        <span class="workspace-tab-icon">🎬</span>
+        <span class="workspace-tab-title">Sáng Tác Tiểu Thuyết</span>
+        <span class="workspace-tab-tag">4 Bước Kịch Bản</span>
+      </button>
+      <button class="workspace-tab" id="tabNavTranslator">
+        <span class="workspace-tab-icon">🌐</span>
+        <span class="workspace-tab-title">Dịch Thuật Studio</span>
+        <span class="workspace-tab-tag">Tiểu Thuyết & Subtitles .SRT</span>
+      </button>
+    </div>
+
+    <!-- ==================== WORKSPACE: NOVEL STUDIO ==================== -->
+    <div id="novelStudioWorkspace">
+      <!-- ==================== STEP WIZARD BAR ==================== -->
+      <nav class="step-indicator-bar" id="stepIndicatorBar">
+        <div class="step-pill active" data-step="1" id="stepPill1">
         <div class="step-num">1</div>
         <div class="step-info">
           <span class="step-name">Chọn Trope & Ý Tưởng</span>
@@ -516,6 +532,157 @@
         </div>
       </div>
     </section>
+    </div> <!-- /novelStudioWorkspace -->
+
+    <!-- ==================== WORKSPACE: TRANSLATOR STUDIO ==================== -->
+    <div id="translatorStudioWorkspace" style="display: none;">
+      
+      <!-- Top Control Bar -->
+      <div class="studio-card" style="margin-bottom: 20px;">
+        <div class="trans-toolbar-row">
+          
+          <!-- Mode Switcher -->
+          <div class="trans-mode-pill-group">
+            <button class="trans-mode-pill active" id="btnTransModeSrt" data-mode="srt">
+              <span>🎬</span> Dịch Phụ Đề Video (.SRT)
+            </button>
+            <button class="trans-mode-pill" id="btnTransModeNovel" data-mode="novel">
+              <span>📖</span> Dịch Tiểu Thuyết / Raw (.TXT)
+            </button>
+          </div>
+
+          <!-- Model & Style Selectors -->
+          <div class="trans-configs-group">
+            <div class="trans-config-item">
+              <label class="trans-config-label">🤖 Model AI:</label>
+              <select id="transModelSelect" class="param-select param-select-sm">
+                <option value="gemini-3.6-flash" selected>gemini-3.6-flash (Zhihu kịch tính - Gộp 1 Request)</option>
+                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Hạn mức 500 RPD - Gộp 1 Request)</option>
+                <option value="gemma-4-31b-it">gemma-4-31b-it (14.400 RPD - Băm nhỏ an toàn 16k TPM)</option>
+                <option value="gemma-4-26b-a4b-it">gemma-4-26b-a4b-it (14.400 RPD MoE - Tốc độ cao)</option>
+                <option value="gemini-3.7-flash">gemini-3.7-flash (Thế hệ 3.7 - 20 RPD)</option>
+                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (10 RPM / 20 RPD)</option>
+              </select>
+            </div>
+
+            <div class="trans-config-item">
+              <label class="trans-config-label">🎭 Phong Cách Dịch:</label>
+              <select id="transStyleSelect" class="param-select param-select-sm">
+                <option value="zhihu" selected>Phim Ngắn Zhihu (Kịch tính, vả mặt, dồn dập)</option>
+                <option value="literary">Thuần Việt Văn Học (Mượt mà, trau chuốt, thoát ý)</option>
+                <option value="convert">Convert Hán Việt (Sát nghĩa, chuẩn danh xưng)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Strategy & Estimate Banner -->
+        <div class="trans-strategy-banner" id="transStrategyBanner">
+          <div class="trans-strategy-info">
+            <span class="strategy-badge" id="transStrategyBadge">⚡ Smart Chunking: Gộp Chunk Lớn</span>
+            <span id="transStrategyDesc" style="color: #cbd5e1; font-size: 12px;">Dùng Gemini: Tối thiểu hóa request (Ước tính tốn <strong>1 Request duy nhất</strong>)</span>
+          </div>
+          <div class="trans-file-stats" id="transFileStats">
+            <span id="transItemCount">0 dòng phụ đề</span> • <span id="transWordCount">0 từ</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drag & Drop Zone -->
+      <div class="trans-dropzone" id="transDropzone">
+        <input type="file" id="transFileInput" accept=".srt,.txt" style="display: none;">
+        <div class="dropzone-inner" id="dropzoneTrigger">
+          <div class="dropzone-icon">📁</div>
+          <div class="dropzone-text">
+            <strong>Kéo thả file .SRT hoặc .TXT vào đây</strong>, hoặc <span class="dropzone-link">chọn file từ máy tính</span>
+          </div>
+          <div class="dropzone-hint">Hỗ trợ phụ đề tiếng Trung, tiếng Anh và văn bản raw tiểu thuyết</div>
+        </div>
+      </div>
+
+      <!-- Translation Dual-Pane Workspace -->
+      <div class="trans-dual-grid">
+        
+        <!-- Left: Source Content -->
+        <div class="studio-card trans-pane-card">
+          <div class="card-header-row" style="margin-bottom: 8px;">
+            <div class="card-title">
+              <span>🇨🇳 / 🇬🇧</span> <span id="transSourceTitle">Văn Bản Gốc (Raw / SRT):</span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="btnPasteSource" class="btn btn-secondary btn-xs">📋 Dán Clipboard</button>
+              <button id="btnClearSource" class="btn btn-secondary btn-xs">🗑️ Xóa</button>
+            </div>
+          </div>
+          <textarea id="transSourceInput" class="trans-textarea" placeholder="Dán nội dung file .SRT hoặc văn bản raw tiếng Trung tại đây...&#10;&#10;Ví dụ SRT:&#10;1&#10;00:00:01,000 --> 00:00:03,500&#10;你到底想怎么样？&#10;&#10;2&#10;00:00:03,800 --> 00:00:06,200&#10;我想让你付出代价！"></textarea>
+        </div>
+
+        <!-- Right: Translated Content -->
+        <div class="studio-card trans-pane-card">
+          <div class="card-header-row" style="margin-bottom: 8px;">
+            <div class="card-title">
+              <span>🇻🇳</span> Bản Dịch Tiếng Việt:
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="btnCopyTranslated" class="btn btn-secondary btn-xs" disabled>📋 Copy</button>
+            </div>
+          </div>
+          
+          <!-- Progress Bar (Shown while translating) -->
+          <div id="transProgressContainer" class="trans-progress-box" style="display: none;">
+            <div class="trans-progress-status-row">
+              <span id="transProgressMsg">Đang dịch phần 1/4...</span>
+              <strong id="transProgressPct">25%</strong>
+            </div>
+            <div class="quota-progress-track" style="height: 6px;">
+              <div class="quota-progress-bar rpm-bar" id="transProgressBar" style="width: 25%;"></div>
+            </div>
+          </div>
+
+          <textarea id="transResultOutput" class="trans-textarea" placeholder="Bản dịch tiếng Việt chuẩn xác và mượt mà sẽ xuất hiện tại đây...&#10;Bạn có thể chỉnh sửa trực tiếp sau khi AI dịch xong."></textarea>
+        </div>
+      </div>
+
+      <!-- Action Bar -->
+      <div class="studio-card trans-action-bar-card" style="margin-top: 16px;">
+        <div class="trans-actions-row">
+          
+          <!-- Start / Pause / Stop -->
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button id="btnStartTranslate" class="btn btn-primary btn-md btn-glow">
+              <span>▶️</span> Bắt Đầu Dịch
+            </button>
+            <button id="btnPauseTranslate" class="btn btn-secondary btn-md" style="display: none;">
+              <span>⏸️</span> Tạm Dừng
+            </button>
+            <button id="btnCancelTranslate" class="btn btn-danger btn-md" style="display: none;">
+              <span>⏹️</span> Hủy Dịch
+            </button>
+          </div>
+
+          <!-- Export & Delivery Buttons -->
+          <div class="trans-export-group" id="transExportGroup">
+            <button id="btnDownloadSrtVi" class="btn btn-success btn-sm" disabled title="Tải file .SRT chỉ chứa phụ đề tiếng Việt">
+              📥 Tải .SRT Tiếng Việt
+            </button>
+            <button id="btnDownloadSrtBilingual" class="btn btn-secondary btn-sm" disabled title="Tải file .SRT song ngữ (Tiếng Việt + Tiếng Trung/Anh)">
+              📑 Tải .SRT Song Ngữ
+            </button>
+            <button id="btnDownloadTxt" class="btn btn-secondary btn-sm" disabled title="Tải file .TXT thuần văn bản">
+              📄 Tải File .TXT
+            </button>
+            <button id="btnSendToAudioStudio" class="btn btn-audio-portal btn-sm" disabled title="Mở trang Tạo Audio và nạp truyện vừa dịch">
+              🎙️ Gửi Sang Tạo Audio ↗
+            </button>
+            <button id="btnSaveToLibrary" class="btn btn-secondary btn-sm" disabled title="Lưu truyện vào Thư viện của Studio">
+              📚 Lưu Vào Thư Viện
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+    </div> <!-- /translatorStudioWorkspace -->
 
   </div>
 

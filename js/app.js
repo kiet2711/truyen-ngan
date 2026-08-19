@@ -3,10 +3,17 @@ import { normalizeTextForAudio } from "./data/numberToWordsVi.js";
 import { geminiService } from "./services/geminiService.js";
 import { storageService } from "./services/storageService.js";
 import { authService } from "./services/authService.js";
+import { translatorService } from "./services/translatorService.js";
 
 class NovelStudioApp {
   constructor() {
     this.currentStep = 1;
+    this.currentWorkspace = "novel"; // "novel" | "translator"
+    this.transMode = "srt"; // "srt" | "novel"
+    this.transParsedSrt = [];
+    this.transRawText = "";
+    this.transTranslatedText = "";
+
     this.customTags = storageService.getCustomTags();
     this.selectedTags = new Set(["Zhihu style", "Vả mặt cực mạnh", "Plot twist bất ngờ", "Báo thù"]);
     this.generatedConcepts = [];
@@ -1754,9 +1761,122 @@ class NovelStudioApp {
         this.selectedConcept = null;
         document.getElementById("conceptsSection").style.display = "none";
         document.getElementById("userPremiseInput").value = "";
+        this.switchWorkspace("novel");
         this.goToStep(1);
       }
     });
+
+    // ==================== WORKSPACE NAVIGATION TABS ====================
+    const tabNovel = document.getElementById("tabNavNovelStudio");
+    const tabTrans = document.getElementById("tabNavTranslator");
+    if (tabNovel) tabNovel.addEventListener("click", () => this.switchWorkspace("novel"));
+    if (tabTrans) tabTrans.addEventListener("click", () => this.switchWorkspace("translator"));
+
+    // ==================== TRANSLATOR STUDIO EVENTS ====================
+    const btnModeSrt = document.getElementById("btnTransModeSrt");
+    const btnModeNovel = document.getElementById("btnTransModeNovel");
+    if (btnModeSrt) btnModeSrt.addEventListener("click", () => this.switchTransMode("srt"));
+    if (btnModeNovel) btnModeNovel.addEventListener("click", () => this.switchTransMode("novel"));
+
+    const transModelSelect = document.getElementById("transModelSelect");
+    if (transModelSelect) {
+      transModelSelect.addEventListener("change", () => this.updateTransEstimate());
+    }
+
+    const dropzone = document.getElementById("transDropzone");
+    const fileInput = document.getElementById("transFileInput");
+    const dropzoneTrigger = document.getElementById("dropzoneTrigger");
+
+    if (dropzoneTrigger && fileInput) {
+      dropzoneTrigger.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", (e) => {
+        if (e.target.files && e.target.files[0]) {
+          this.handleTransFileUpload(e.target.files[0]);
+        }
+      });
+    }
+
+    if (dropzone) {
+      dropzone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropzone.classList.add("dragover");
+      });
+      dropzone.addEventListener("dragleave", () => {
+        dropzone.classList.remove("dragover");
+      });
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          this.handleTransFileUpload(e.dataTransfer.files[0]);
+        }
+      });
+    }
+
+    const transSourceInput = document.getElementById("transSourceInput");
+    if (transSourceInput) {
+      transSourceInput.addEventListener("input", () => this.onTransSourceChanged());
+    }
+
+    const btnPaste = document.getElementById("btnPasteSource");
+    if (btnPaste) {
+      btnPaste.addEventListener("click", async () => {
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text) {
+            transSourceInput.value = text;
+            this.onTransSourceChanged();
+            this.showToast("Đã dán văn bản từ clipboard!", "info");
+          }
+        } catch {
+          this.showToast("Không thể đọc clipboard tự động, vui lòng dùng Ctrl+V.", "warning");
+        }
+      });
+    }
+
+    const btnClear = document.getElementById("btnClearSource");
+    if (btnClear) {
+      btnClear.addEventListener("click", () => {
+        transSourceInput.value = "";
+        document.getElementById("transResultOutput").value = "";
+        this.onTransSourceChanged();
+      });
+    }
+
+    const btnStartTrans = document.getElementById("btnStartTranslate");
+    if (btnStartTrans) btnStartTrans.addEventListener("click", () => this.startTranslation());
+
+    const btnPauseTrans = document.getElementById("btnPauseTranslate");
+    if (btnPauseTrans) btnPauseTrans.addEventListener("click", () => this.togglePauseTranslation());
+
+    const btnCancelTrans = document.getElementById("btnCancelTranslate");
+    if (btnCancelTrans) btnCancelTrans.addEventListener("click", () => this.cancelTranslation());
+
+    const btnDownloadVi = document.getElementById("btnDownloadSrtVi");
+    if (btnDownloadVi) btnDownloadVi.addEventListener("click", () => this.downloadSrt("translated"));
+
+    const btnDownloadBi = document.getElementById("btnDownloadSrtBilingual");
+    if (btnDownloadBi) btnDownloadBi.addEventListener("click", () => this.downloadSrt("bilingual"));
+
+    const btnDownloadTxt = document.getElementById("btnDownloadTxt");
+    if (btnDownloadTxt) btnDownloadTxt.addEventListener("click", () => this.downloadTransTxt());
+
+    const btnCopyResult = document.getElementById("btnCopyTranslated");
+    if (btnCopyResult) {
+      btnCopyResult.addEventListener("click", () => {
+        const text = document.getElementById("transResultOutput").value;
+        if (text) {
+          navigator.clipboard.writeText(text);
+          this.showToast("Đã sao chép bản dịch vào clipboard!", "success");
+        }
+      });
+    }
+
+    const btnSendAudio = document.getElementById("btnSendToAudioStudio");
+    if (btnSendAudio) btnSendAudio.addEventListener("click", () => this.sendTranslatedToAudio());
+
+    const btnSaveLib = document.getElementById("btnSaveToLibrary");
+    if (btnSaveLib) btnSaveLib.addEventListener("click", () => this.saveTranslatedToLibrary());
 
     // Step 1 Events
     const btnToggleAdd = document.getElementById("btnToggleAddTag");
@@ -2088,6 +2208,377 @@ class NovelStudioApp {
 
       container.appendChild(card);
     });
+  }
+
+  // ==================== WORKSPACE SWITCHER ====================
+
+  switchWorkspace(workspaceName) {
+    this.currentWorkspace = workspaceName;
+
+    const tabNovel = document.getElementById("tabNavNovelStudio");
+    const tabTrans = document.getElementById("tabNavTranslator");
+    const novelWorkspace = document.getElementById("novelStudioWorkspace");
+    const transWorkspace = document.getElementById("translatorStudioWorkspace");
+
+    if (workspaceName === "translator") {
+      if (tabNovel) tabNovel.classList.remove("active");
+      if (tabTrans) tabTrans.classList.add("active");
+      if (novelWorkspace) novelWorkspace.style.display = "none";
+      if (transWorkspace) transWorkspace.style.display = "block";
+      this.updateTransEstimate();
+    } else {
+      if (tabNovel) tabNovel.classList.add("active");
+      if (tabTrans) tabTrans.classList.remove("active");
+      if (novelWorkspace) novelWorkspace.style.display = "block";
+      if (transWorkspace) transWorkspace.style.display = "none";
+    }
+  }
+
+  // ==================== TRANSLATOR STUDIO LOGIC ====================
+
+  switchTransMode(mode) {
+    this.transMode = mode;
+    const btnSrt = document.getElementById("btnTransModeSrt");
+    const btnNovel = document.getElementById("btnTransModeNovel");
+    const sourceTitle = document.getElementById("transSourceTitle");
+    const sourceInput = document.getElementById("transSourceInput");
+    const btnVi = document.getElementById("btnDownloadSrtVi");
+    const btnBi = document.getElementById("btnDownloadSrtBilingual");
+    const btnTxt = document.getElementById("btnDownloadTxt");
+    const btnAudio = document.getElementById("btnSendToAudioStudio");
+    const btnLib = document.getElementById("btnSaveToLibrary");
+
+    if (mode === "novel") {
+      if (btnSrt) btnSrt.classList.remove("active");
+      if (btnNovel) btnNovel.classList.add("active");
+      if (sourceTitle) sourceTitle.textContent = "Văn Bản Raw Tiểu Thuyết (Tiếng Trung / Anh):";
+      if (sourceInput) sourceInput.placeholder = "Dán văn bản raw tiểu thuyết tại đây...\n\nVí dụ:\n陆谨年冷冷地看着眼前这个满眼泪水的女人，嘴角勾起一抹讥讽的笑意。\n“沈昭昭，你以为装可怜就能让我放过沈家吗？”";
+      if (btnVi) btnVi.style.display = "none";
+      if (btnBi) btnBi.style.display = "none";
+      if (btnTxt) btnTxt.style.display = "inline-flex";
+      if (btnAudio) btnAudio.style.display = "inline-flex";
+      if (btnLib) btnLib.style.display = "inline-flex";
+    } else {
+      if (btnSrt) btnSrt.classList.add("active");
+      if (btnNovel) btnNovel.classList.remove("active");
+      if (sourceTitle) sourceTitle.textContent = "Nội Dung Phụ Đề (.SRT):";
+      if (sourceInput) sourceInput.placeholder = "Dán nội dung file .SRT tại đây...\n\nVí dụ:\n1\n00:00:01,000 --> 00:00:03,500\n你到底想怎么样？\n\n2\n00:00:03,800 --> 00:00:06,200\n我想让你付出代价！";
+      if (btnVi) btnVi.style.display = "inline-flex";
+      if (btnBi) btnBi.style.display = "inline-flex";
+      if (btnTxt) btnTxt.style.display = "inline-flex";
+      if (btnAudio) btnAudio.style.display = "inline-flex";
+      if (btnLib) btnLib.style.display = "none";
+    }
+
+    this.onTransSourceChanged();
+  }
+
+  onTransSourceChanged() {
+    const text = document.getElementById("transSourceInput")?.value || "";
+    const itemCountEl = document.getElementById("transItemCount");
+    const wordCountEl = document.getElementById("transWordCount");
+
+    if (this.transMode === "srt") {
+      this.transParsedSrt = translatorService.parseSrt(text);
+      if (itemCountEl) itemCountEl.textContent = `${this.transParsedSrt.length} dòng phụ đề`;
+      const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+      if (wordCountEl) wordCountEl.textContent = `${wordCount.toLocaleString()} từ`;
+    } else {
+      this.transRawText = text;
+      const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+      if (itemCountEl) itemCountEl.textContent = `${text.split(/\n+/).filter(Boolean).length} đoạn văn`;
+      if (wordCountEl) wordCountEl.textContent = `${wordCount.toLocaleString()} từ`;
+    }
+
+    this.updateTransEstimate();
+  }
+
+  updateTransEstimate() {
+    const modelSelect = document.getElementById("transModelSelect");
+    const modelId = modelSelect ? modelSelect.value : "gemini-3.6-flash";
+    const badgeEl = document.getElementById("transStrategyBadge");
+    const descEl = document.getElementById("transStrategyDesc");
+
+    const isGemma = modelId.toLowerCase().includes("gemma");
+    const config = translatorService.getChunkConfig(modelId, this.transMode);
+
+    let totalUnits = 0;
+    if (this.transMode === "srt") {
+      totalUnits = this.transParsedSrt.length;
+    } else {
+      const text = document.getElementById("transSourceInput")?.value || "";
+      totalUnits = text.trim().split(/\s+/).filter(Boolean).length;
+    }
+
+    const estimatedChunks = totalUnits > 0 ? Math.ceil(totalUnits / config.chunkSize) : 0;
+
+    if (badgeEl) {
+      if (isGemma) {
+        badgeEl.className = "strategy-badge gemma";
+        badgeEl.textContent = `⚡ Smart Chunking: Chia Nhỏ (Gemma 16k TPM)`;
+      } else {
+        badgeEl.className = "strategy-badge";
+        badgeEl.textContent = `⚡ Smart Chunking: Gộp Chunk Lớn (Gemini 250k TPM)`;
+      }
+    }
+
+    if (descEl) {
+      if (totalUnits === 0) {
+        descEl.innerHTML = isGemma
+          ? `Gemma 14.4k RPD: Tự động chia nhỏ 50 dòng/request để an toàn trần 16k TPM`
+          : `Gemini: Gộp chunk tối đa 350 dòng/request (tiết kiệm số lượt gọi)`;
+      } else {
+        if (isGemma) {
+          descEl.innerHTML = `Model Gemma: Chia thành <strong>${estimatedChunks} phần nhỏ</strong> (Chạy tuần tự, tiêu tốn <strong>${estimatedChunks}/14.400 RPD</strong>)`;
+        } else {
+          descEl.innerHTML = `Model Gemini: Gom trọn gói thành <strong>${estimatedChunks} Request duy nhất</strong> (Tiết kiệm hạn mức ngày)`;
+        }
+      }
+    }
+  }
+
+  handleTransFileUpload(file) {
+    if (!file) return;
+    const isSrt = file.name.toLowerCase().endsWith(".srt");
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      const content = e.target.result;
+      const inputEl = document.getElementById("transSourceInput");
+      if (inputEl) {
+        inputEl.value = content;
+      }
+      if (isSrt) {
+        this.switchTransMode("srt");
+      } else {
+        this.switchTransMode("novel");
+      }
+      this.showToast(`Đã tải file: ${file.name}`, "success");
+    };
+
+    reader.readAsText(file, "utf-8");
+  }
+
+  async startTranslation() {
+    const keys = storageService.getApiKeys();
+    if (!keys || keys.length === 0) {
+      this.showToast("Vui lòng cấu hình Gemini API Key trước khi dịch!", "warning");
+      this.openApiSettingsModal();
+      return;
+    }
+
+    const sourceText = document.getElementById("transSourceInput")?.value?.trim() || "";
+    if (!sourceText) {
+      this.showToast("Vui lòng dán nội dung hoặc tải file cần dịch!", "warning");
+      return;
+    }
+
+    const modelSelect = document.getElementById("transModelSelect");
+    const styleSelect = document.getElementById("transStyleSelect");
+    const modelId = modelSelect ? modelSelect.value : "gemini-3.6-flash";
+    const style = styleSelect ? styleSelect.value : "zhihu";
+
+    // UI state: Translating
+    this.setTransUiState(true);
+
+    const progressBox = document.getElementById("transProgressContainer");
+    const progressMsg = document.getElementById("transProgressMsg");
+    const progressPct = document.getElementById("transProgressPct");
+    const progressBar = document.getElementById("transProgressBar");
+    const resultOutput = document.getElementById("transResultOutput");
+
+    if (progressBox) progressBox.style.display = "block";
+    if (resultOutput) resultOutput.value = "Đang kết nối tới AI và khởi tạo tiến trình dịch...";
+
+    const onProgress = (p) => {
+      if (progressMsg) progressMsg.textContent = p.message;
+      if (progressPct) progressPct.textContent = `${p.progressPercent}%`;
+      if (progressBar) progressBar.style.width = `${p.progressPercent}%`;
+
+      // Live update result preview
+      if (this.transMode === "srt" && Array.isArray(this.transParsedSrt)) {
+        if (resultOutput) {
+          resultOutput.value = translatorService.buildSrt(this.transParsedSrt, "translated");
+        }
+      }
+    };
+
+    try {
+      if (this.transMode === "srt") {
+        this.transParsedSrt = translatorService.parseSrt(sourceText);
+        if (this.transParsedSrt.length === 0) {
+          throw new Error("Không thể nhận diện định dạng SRT. Vui lòng kiểm tra lại file phụ đề.");
+        }
+        await translatorService.translateSrt(this.transParsedSrt, modelId, style, onProgress);
+        if (resultOutput) {
+          resultOutput.value = translatorService.buildSrt(this.transParsedSrt, "translated");
+        }
+      } else {
+        const fullTranslated = await translatorService.translateNovel(sourceText, modelId, style, onProgress);
+        this.transTranslatedText = fullTranslated;
+        if (resultOutput) {
+          resultOutput.value = fullTranslated;
+        }
+      }
+
+      this.showToast("🎉 Đã dịch hoàn tất thành công!", "success");
+      this.enableTransExportButtons(true);
+
+    } catch (err) {
+      console.error("Translation error:", err);
+      this.showToast(`Lỗi khi dịch: ${err.message}`, "error");
+      if (resultOutput && resultOutput.value.startsWith("Đang")) {
+        resultOutput.value = `❌ Quá trình dịch bị gián đoạn: ${err.message}`;
+      }
+    } finally {
+      this.setTransUiState(false);
+    }
+  }
+
+  setTransUiState(isTranslating) {
+    const btnStart = document.getElementById("btnStartTranslate");
+    const btnPause = document.getElementById("btnPauseTranslate");
+    const btnCancel = document.getElementById("btnCancelTranslate");
+    const progressBox = document.getElementById("transProgressContainer");
+
+    if (isTranslating) {
+      if (btnStart) btnStart.style.display = "none";
+      if (btnPause) {
+        btnPause.style.display = "inline-flex";
+        btnPause.innerHTML = `<span>⏸️</span> Tạm Dừng`;
+      }
+      if (btnCancel) btnCancel.style.display = "inline-flex";
+      if (progressBox) progressBox.style.display = "block";
+    } else {
+      if (btnStart) {
+        btnStart.style.display = "inline-flex";
+        btnStart.innerHTML = `<span>▶️</span> Bắt Đầu Dịch Lại`;
+      }
+      if (btnPause) btnPause.style.display = "none";
+      if (btnCancel) btnCancel.style.display = "none";
+    }
+  }
+
+  togglePauseTranslation() {
+    const btnPause = document.getElementById("btnPauseTranslate");
+    if (!translatorService.isPaused) {
+      translatorService.pause();
+      if (btnPause) btnPause.innerHTML = `<span>▶️</span> Tiếp Tục`;
+      this.showToast("Đã tạm dừng tiến trình dịch.", "info");
+    } else {
+      translatorService.resume();
+      if (btnPause) btnPause.innerHTML = `<span>⏸️</span> Tạm Dừng`;
+      this.showToast("Đang tiếp tục dịch...", "info");
+    }
+  }
+
+  cancelTranslation() {
+    if (confirm("Bạn có chắc chắn muốn hủy tiến trình dịch hiện tại không?")) {
+      translatorService.cancel();
+      this.setTransUiState(false);
+      this.showToast("Đã hủy tiến trình dịch.", "warning");
+    }
+  }
+
+  enableTransExportButtons(enabled) {
+    const buttons = [
+      "btnDownloadSrtVi",
+      "btnDownloadSrtBilingual",
+      "btnDownloadTxt",
+      "btnCopyTranslated",
+      "btnSendToAudioStudio",
+      "btnSaveToLibrary"
+    ];
+    buttons.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !enabled;
+    });
+  }
+
+  downloadSrt(mode = "translated") {
+    if (!this.transParsedSrt || this.transParsedSrt.length === 0) {
+      this.showToast("Chưa có nội dung phụ đề để tải về!", "warning");
+      return;
+    }
+    const content = translatorService.buildSrt(this.transParsedSrt, mode);
+    const suffix = mode === "bilingual" ? "_bilingual.srt" : "_vi.srt";
+    const filename = `subtitles_${Date.now()}${suffix}`;
+    this.triggerDownload(content, filename, "text/plain;charset=utf-8");
+    this.showToast(`Đã tải file phụ đề: ${filename}`, "success");
+  }
+
+  downloadTransTxt() {
+    const content = document.getElementById("transResultOutput")?.value || "";
+    if (!content) {
+      this.showToast("Chưa có nội dung văn bản để tải về!", "warning");
+      return;
+    }
+    const filename = `ban_dich_${Date.now()}.txt`;
+    this.triggerDownload(content, filename, "text/plain;charset=utf-8");
+    this.showToast(`Đã tải file văn bản: ${filename}`, "success");
+  }
+
+  triggerDownload(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  sendTranslatedToAudio() {
+    const text = document.getElementById("transResultOutput")?.value || "";
+    if (!text) {
+      this.showToast("Chưa có bản dịch để gửi sang Audio!", "warning");
+      return;
+    }
+    navigator.clipboard.writeText(text);
+    this.showToast("Đã sao chép toàn bộ văn bản! Đang mở trang Tạo Audio...", "success");
+    window.open("https://tao-audio-truyen.onrender.com", "_blank");
+  }
+
+  async saveTranslatedToLibrary() {
+    const content = document.getElementById("transResultOutput")?.value || "";
+    if (!content) {
+      this.showToast("Chưa có bản dịch để lưu!", "warning");
+      return;
+    }
+
+    const title = prompt("Nhập tiêu đề cho bộ truyện này:", `Truyện Dịch - ${new Date().toLocaleDateString("vi-VN")}`);
+    if (!title) return;
+
+    const words = content.trim().split(/\s+/).filter(Boolean).length;
+    const storyObj = {
+      id: `story_trans_${Date.now()}`,
+      title,
+      outline: {
+        title,
+        premise: "Tác phẩm dịch thuật",
+        characters: []
+      },
+      chapters: [
+        {
+          chapterNumber: 1,
+          title: "Toàn Văn Bản Dịch",
+          content: content,
+          wordCount: words,
+          status: "completed"
+        }
+      ],
+      params: {
+        selectedTags: ["Truyện Dịch", "Bản Dịch AI"]
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    await storageService.saveStory(storyObj);
+    await this.updateSavedCount();
+    this.showToast(`Đã lưu "${title}" vào Thư Viện Studio!`, "success");
   }
 }
 

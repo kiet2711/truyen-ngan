@@ -914,8 +914,8 @@ export class NovelController {
               </div>
             </div>
             <div class="audio-banner-tags">
-              <span class="audio-tag">${this.audioRemoveTitles ? '✓ Đã ẩn tiêu đề' : 'Hiện tiêu đề'}</span>
-              <span class="audio-tag">${this.audioSingleParagraph ? '✓ Gom 1 đoạn' : 'Đoạn rời'}</span>
+              <span class="audio-tag">${this.audioRemoveTitles ? '✓ Đã ẩn tiêu đề chương' : '✕ Giữ tiêu đề'}</span>
+              <span class="audio-tag">${this.audioSingleParagraph ? '✓ Gộp 1 đoạn liền mạch' : '✕ Đoạn văn rời'}</span>
             </div>
           </div>
           <div style="font-size: 15.5px; line-height: 1.9; white-space: pre-wrap; color: var(--text-main); font-family: var(--font-reader-serif);">
@@ -923,14 +923,38 @@ export class NovelController {
           </div>
         `;
       } else {
-        bodyEl.innerHTML = (story.chapters || []).map(ch => `
-          <div class="reader-chapter-block" id="chapter_read_${ch.chapterNumber}">
-            <h2 style="font-size: 18px; font-weight: 800; color: var(--accent-pink); margin-bottom: 16px;">
-              Chương ${ch.chapterNumber}: ${ch.title}
-            </h2>
-            <div style="font-size: 15px; line-height: 1.85; color: var(--text-main); white-space: pre-wrap;">${ch.content || '<em style="color: var(--text-dim);">(Chương này chưa có nội dung)</em>'}</div>
-          </div>
-        `).join("");
+        // Chế độ bản gốc - cập nhật trực tiếp theo checkbox của người dùng
+        if (this.audioSingleParagraph) {
+          let mergedText = (story.chapters || []).map(ch => {
+            const titleLine = this.audioRemoveTitles ? "" : `Chương ${ch.chapterNumber}: ${ch.title}. `;
+            return titleLine + (ch.content || "");
+          }).join(" ");
+          mergedText = mergedText.replace(/\n+/g, " ");
+
+          bodyEl.innerHTML = `
+            <div style="font-size: 15px; line-height: 1.9; color: var(--text-main); font-family: var(--font-reader-serif); white-space: pre-wrap;">
+              ${mergedText}
+            </div>
+          `;
+        } else {
+          bodyEl.innerHTML = (story.chapters || []).map(ch => {
+            const headerHtml = this.audioRemoveTitles ? '' : `
+              <h2 style="font-size: 18px; font-weight: 800; color: var(--accent-pink); margin-bottom: 16px;">
+                Chương ${ch.chapterNumber}: ${ch.title}
+              </h2>
+            `;
+            const blockStyle = this.audioRemoveTitles 
+              ? "margin-bottom: 24px; padding-bottom: 18px; border-bottom: 1px dashed rgba(255,255,255,0.08);"
+              : "margin-bottom: 36px; padding-bottom: 28px; border-bottom: 1px dashed rgba(255,255,255,0.12);";
+
+            return `
+              <div class="reader-chapter-block" id="chapter_read_${ch.chapterNumber}" style="${blockStyle}">
+                ${headerHtml}
+                <div style="font-size: 15px; line-height: 1.85; color: var(--text-main); white-space: pre-wrap;">${ch.content || '<em style="color: var(--text-dim);">(Chương này chưa có nội dung)</em>'}</div>
+              </div>
+            `;
+          }).join("");
+        }
       }
     }
   }
@@ -951,7 +975,18 @@ export class NovelController {
 
   buildOriginalNovelText() {
     if (!this.currentStory || !this.currentStory.chapters) return "";
-    return this.currentStory.chapters.map(c => `=== CHƯƠNG ${c.chapterNumber}: ${c.title} ===\n\n${c.content}`).join("\n\n\n");
+    if (this.audioSingleParagraph) {
+      let merged = this.currentStory.chapters.map(c => {
+        const titleLine = this.audioRemoveTitles ? "" : `=== CHƯƠNG ${c.chapterNumber}: ${c.title} === `;
+        return titleLine + (c.content || "");
+      }).join(" ");
+      return merged.replace(/\n+/g, " ");
+    }
+
+    return this.currentStory.chapters.map(c => {
+      const titleLine = this.audioRemoveTitles ? "" : `=== CHƯƠNG ${c.chapterNumber}: ${c.title} ===\n\n`;
+      return titleLine + (c.content || "");
+    }).join("\n\n\n");
   }
 
   getCurrentStoryText() {
@@ -1210,7 +1245,11 @@ export class NovelController {
     if (chkRemoveTitles) {
       chkRemoveTitles.addEventListener("change", (e) => {
         this.audioRemoveTitles = e.target.checked;
-        if (this.isAudioCleaned) this.renderReaderMode();
+        this.renderReaderMode();
+        const msg = this.audioRemoveTitles 
+          ? "✓ Đã xóa toàn bộ tiêu đề & tên chương trên màn hình!" 
+          : "✓ Đã hiển thị lại tiêu đề các chương.";
+        this.app.showToast(msg, "info");
       });
     }
 
@@ -1218,7 +1257,11 @@ export class NovelController {
     if (chkSinglePara) {
       chkSinglePara.addEventListener("change", (e) => {
         this.audioSingleParagraph = e.target.checked;
-        if (this.isAudioCleaned) this.renderReaderMode();
+        this.renderReaderMode();
+        const msg = this.audioSingleParagraph 
+          ? "✓ Đã gộp toàn bộ thành 1 đoạn văn duy nhất!" 
+          : "✓ Đã tách lại thành các đoạn văn riêng biệt.";
+        this.app.showToast(msg, "info");
       });
     }
 

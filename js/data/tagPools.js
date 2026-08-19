@@ -81,56 +81,96 @@ export const STORY_TONES = [
 
 export const TROPE_CATEGORIES = [
   {
-    category: "Phong Cách & Cốt Truyện",
+    category: "🎯 Cam Kết Cảm Xúc & Động Cơ (Emotional Payoffs)",
     tags: [
-      { id: "zhihu_style", name: "Zhihu style", highlight: true },
       { id: "va_mat", name: "Vả mặt cực mạnh", highlight: true },
-      { id: "ngot_sung", name: "Ngọt sủng không ngược", highlight: true },
-      { id: "chua_lanh", name: "Chữa lành (Healing)", highlight: true },
-      { id: "doi_thuong", name: "Đời thường ấm áp", highlight: true },
-      { id: "plot_twist", name: "Plot twist bất ngờ", highlight: true },
-      { id: "bao_thu", name: "Báo thù" },
+      { id: "nghich_tap", name: "Nghịch tập sảng khoái", highlight: true },
+      { id: "bao_thu", name: "Báo thù rửa hận", highlight: true },
+      { id: "nguoc_tam_giang_xe", name: "Ngược luyến giằng xé", highlight: true },
+      { id: "plot_twist", name: "Plot twist phản chuyển", highlight: true },
+      { id: "truong_thanh_nhiet_huyet", name: "Trưởng thành nhiệt huyết" },
+      { id: "sinh_ton_ngat_tho", name: "Sinh tồn ngạt thở" },
+      { id: "nu_cuong_thuc_tinh", name: "Nữ cường thức tỉnh" },
+      { id: "ngot_sung_cuu_roi", name: "Ngọt sủng cứu rỗi" },
+      { id: "trinh_tham_hoi_hop", name: "Trinh thám phá án" },
       { id: "an_dua", name: "Ăn dưa hóng drama" },
-      { id: "he_thong", name: "Hệ thống" },
-      { id: "sang_van", name: "Sảng văn vui vẻ" },
-      { id: "cau_huyet", name: "Cẩu huyết kịch tính" },
-      { id: "hai_huoc", name: "Hài hước mặn mòi" }
+      { id: "chua_lanh", name: "Chữa lành Healing" }
     ]
   },
   {
-    category: "Bối Cảnh & Thiết Lập Thế Giới",
+    category: "🔥 Mối Quan Hệ Áp Lực Cao (High-Pressure Relationships)",
+    tags: [
+      { id: "that_gia_thien_kim", name: "Thật giả thiên kim", highlight: true },
+      { id: "tien_phu_tien_the", name: "Tiền phu / Tiền thê", highlight: true },
+      { id: "the_than_bach_nguyet_quang", name: "Thế thân / Bạch nguyệt quang", highlight: true },
+      { id: "o_re_hao_mon", name: "Ở rể / Gia tộc hào môn", highlight: true },
+      { id: "cuu_mang_nhan_nham", name: "Cứu mạng / Nhận nhầm ân nhân" },
+      { id: "ke_thu_hop_tac", name: "Kẻ thù buộc phải hợp tác" },
+      { id: "thuong_vi_ngoai_lai", name: "Thượng vị giả / Ngoại lai giả" },
+      { id: "hau_dai_tien_dai", name: "Hậu đài âm thầm / Anh hùng sân khấu" },
+      { id: "chu_no_con_no", name: "Chủ nợ / Con nợ" },
+      { id: "su_do_tong_mon", name: "Sư đồ / Tông môn ràng buộc" },
+      { id: "hon_nhan_hop_dong", name: "Hôn nhân hợp đồng" }
+    ]
+  },
+  {
+    category: "⚡ Vũ Đài Xung Đột Công Khai (Conflict Arenas)",
+    tags: [
+      { id: "huy_hon_ly_hon_tai_tran", name: "Hủy hôn / Ly hôn tại trận", highlight: true },
+      { id: "gia_yen_tho_yen", name: "Gia yến / Thọ yến hào môn", highlight: true },
+      { id: "dau_gia_giam_bao", name: "Đấu giá ngầm / Giám bảo lật kèo", highlight: true },
+      { id: "hoi_dong_tham_tra", name: "Hội đồng thẩm tra / Luận tội", highlight: true },
+      { id: "tong_mon_thi_luyen", name: "Tông môn đại tỷ / Thí luyện" },
+      { id: "livestream_boc_phot", name: "Livestream / Hot search bóc trần" },
+      { id: "toa_an_phan_chia", name: "Tòa án / Tranh chấp thừa kế" },
+      { id: "hop_phuc_ban_du_an", name: "Họp dự án / Phục bàn bắt lỗi" },
+      { id: "phong_cap_cuu", name: "Hành lang phòng cấp cứu" }
+    ]
+  },
+  {
+    category: "🎬 Cảm Hứng Beat Kinh Điển (Classic Beat Remix)",
+    tags: [
+      { id: "kieu_than_an", name: "Kiểu Thần Ăn (Rớt đài -> Rèn nghề -> Tỏa sáng)", highlight: true },
+      { id: "kieu_monte_cristo", name: "Kiểu Monte Cristo (Ẩn nhẫn đổi danh tính báo thù)", highlight: true },
+      { id: "kieu_rashomon", name: "Kiểu Rashomon (Lời khai đa góc nhìn)" },
+      { id: "kieu_ma_ba_dung", name: "Kiểu Ma Bá Dung (Tiểu nhân vật trong guồng máy lớn)" },
+      { id: "kieu_chau_tinh_tri", name: "Kiểu Châu Tinh Trì (Tiểu nhân vật vươn lên ngoạn mục)" },
+      { id: "kieu_sixth_sense", name: "Kiểu Sixth Sense (Đảo ngược toàn bộ tiền đề)" },
+      { id: "kieu_moc_lan", name: "Kiểu Mộc Lan (Ẩn thân phá vỡ quy tắc)" },
+      { id: "kieu_yes_minister", name: "Kiểu Yes Minister (Châm biếm đấu đá quyền lực)" }
+    ]
+  },
+  {
+    category: "🏞️ Bối Cảnh & Thiết Lập Thế Giới",
     tags: [
       { id: "hao_mon", name: "Hào môn thế gia" },
       { id: "hien_dai", name: "Hiện đại đô thị" },
-      { id: "thanh_xuan", name: "Thanh xuân vườn trường" },
+      { id: "gioi_giai_tri", name: "Giới giải trí" },
       { id: "dien_van", name: "Điền văn làm giàu" },
       { id: "quan_an_nho", name: "Quán ăn nhỏ / Tiệm bánh" },
-      { id: "nong_thon_yen_binh", name: "Nông thôn yên bình" },
-      { id: "gioi_giai_tri", name: "Giới giải trí" },
-      { id: "that_gia_thien_kim", name: "Thật giả thiên kim" },
       { id: "trong_sinh", name: "Trọng sinh" },
       { id: "xuyen_thu", name: "Xuyên thư" },
+      { id: "tien_hiep", name: "Tu chân tiên hiệp" },
+      { id: "co_dai", name: "Cổ đại gia đình / Cung đình" },
       { id: "huyen_hoc", name: "Huyền học đoán mệnh" },
       { id: "mat_the", name: "Mạt thế tích trữ" },
-      { id: "co_dai", name: "Cổ đại gia đình / Cung đình" },
-      { id: "tien_hiep", name: "Tu chân tiên hiệp" },
-      { id: "dan_quoc", name: "Dân quốc hào môn" }
+      { id: "dan_quoc", name: "Dân quốc hào môn" },
+      { id: "thanh_xuan", name: "Thanh xuân vườn trường" }
     ]
   },
   {
-    category: "Hình Tượng & Tuyến Nhân Vật",
+    category: "👥 Tuyến Nhân Vật & Hình Tượng",
     tags: [
       { id: "cuoi_truoc_yeu_sau", name: "Cưới trước yêu sau", highlight: true },
       { id: "song_huong_tham_luyen", name: "Song hướng thầm mến", highlight: true },
-      { id: "thanh_mai_truc_ma", name: "Thanh mai trúc mã" },
-      { id: "am_ap_diu_dang", name: "Ấm áp dịu dàng" },
-      { id: "nu_cuong", name: "Nữ cường" },
-      { id: "nam_cuong", name: "Nam cường" },
-      { id: "ca_man", name: "Cá mặn (thích nằm yên)" },
-      { id: "tong_tai_ba_dao", name: "Tổng tài thâm tình" },
+      { id: "nu_cuong", name: "Nữ cường quyết đoán" },
+      { id: "nam_cuong", name: "Nam cường thâm sâu" },
       { id: "dai_lao_an_than", name: "Đại lão ẩn thân" },
+      { id: "ca_man", name: "Cá mặn (thích nằm yên)" },
       { id: "tra_nam_tra_xanh", name: "Tra nam trà xanh" },
-      { id: "me_ke", name: "Mẹ kế độc ác" }
+      { id: "me_ke", name: "Mẹ kế độc ác" },
+      { id: "tong_tai_ba_dao", name: "Tổng tài thâm tình" },
+      { id: "song_khiet", name: "Song khiết ngọt ngào" }
     ]
   }
 ];
@@ -139,7 +179,7 @@ export const TROPE_CATEGORIES = [
 export const ALL_TROPES = TROPE_CATEGORIES.flatMap(c => c.tags);
 
 /**
- * Lấy ngẫu nhiên 3 - 5 tag trope
+ * Lấy ngẫu nhiên 3 - 5 tag trope phối hợp theo công thức kịch tính
  */
 export function getRandomTropes(count = 4) {
   const shuffled = [...ALL_TROPES].sort(() => 0.5 - Math.random());
@@ -147,17 +187,19 @@ export function getRandomTropes(count = 4) {
 }
 
 /**
- * Mẫu ý tưởng mở đầu nhanh (Premise prompts gợi ý)
+ * Mẫu ý tưởng mở đầu nhanh (Premise prompts gợi ý đa dạng kịch tính)
  */
 export function getRandomSamplePremise() {
   const premises = [
+    "Vào ngày gia yến thọ thần 80 tuổi của lão phu nhân Lục gia, em gái nuôi dâng lên một bức cổ họa giả rồi vu oan tôi tráo đổi đồ thật để bán lấy tiền tiêu xài.",
+    "Ngày ký giấy ly hôn tại tòa án, vị hôn phu cũ ép tôi phải ra đi tay trắng, đúng lúc đó luật sư trưởng của tập đoàn tài phiệt số một Kinh Đô bước vào mang theo bản di chúc thật.",
+    "Tôi là một đệ tử ngoại môn tạp vụ bị tông môn ruồng bỏ, trong buổi giám bảo linh vật ngầm, tất cả mọi người đều tranh nhau mua một viên ngọc phế phẩm còn tôi nhặt được truyền thừa thượng cổ.",
+    "Sau khi trọng sinh về đúng khoảnh khắc bị ép gả thay cho vị đại lão tàn tật quái dị của Giang gia, tôi không khóc lóc bỏ trốn nữa mà thản nhiên cầm bút ký tên vào hợp đồng hôn nhân.",
+    "Tôi vốn là thiên kim thật sự bị thất lạc 18 năm, ngày trở về gia đình hào môn, mẹ ruột nắm tay thiên kim giả nói: 'Nó yếu đuối từ nhỏ, con nhường phòng ngủ và hôn ước cho nó đi'.",
+    "Một nhân viên kỹ thuật hậu đài nhỏ bé bị cấp trên cướp trắng công lao dự án trăm tỷ, trong buổi họp phục bàn toàn thể tập đoàn, anh ta đã dùng chính mã nguồn log để lật tẩy toàn bộ âm mưu.",
     "Sau khi tốt nghiệp, tôi về quê thừa kế một quán trà nhỏ ven sông, mở ra những ngày tháng pha trà ngắm mưa và lắng nghe tâm sự của lữ khách qua đường.",
     "Tôi cùng học thần lạnh lùng của trường kết hôn giả theo hôn ước gia đình, ai ngờ sau khi về chung một nhà hắn lại cưng chiều tôi lên tận trời.",
-    "Trọng sinh về năm hai mươi tuổi, tôi không bon chen chốn hào môn nữa mà dọn ra vùng ngoại ô mở tiệm bánh ngọt, sống những ngày tháng bình yên thơm nức mùi bơ sữa.",
-    "Vào ngày đính hôn với Thái tử gia Bắc Kinh, tôi vô tình nghe thấy hắn cùng cô em gái nuôi bàn bạc cách chuyển toàn bộ tài sản của tôi sang tên cô ta.",
-    "Tôi là nữ phụ độc ác trong tiểu thuyết, theo kịch bản hôm nay tôi phải nhảy lầu để đe dọa nam chính, nhưng tôi quyết định cầm 500 tỷ rồi lui về hậu trường ăn dưa.",
-    "Sau khi trọng sinh về ngày bị ép gả cho 'đại ma đầu' tàn tật của Lục gia, tôi không chạy trốn nữa mà lập tức ký giấy đăng ký kết hôn.",
-    "Một ngày bình thường, tôi nhặt được một chú mèo hoang bị thương trước cửa nhà, không ngờ hôm sau có một vị tổng tài lạnh lùng đến gõ cửa cảm ơn."
+    "Tôi là nữ phụ độc ác trong tiểu thuyết, theo kịch bản hôm nay tôi phải nhảy lầu để đe dọa nam chính, nhưng tôi quyết định cầm 500 tỷ rồi lui về hậu trường ăn dưa."
   ];
   return premises[Math.floor(Math.random() * premises.length)];
 }

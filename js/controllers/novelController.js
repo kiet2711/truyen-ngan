@@ -603,6 +603,8 @@ export class NovelController {
         title: ch.title || `Chương ${idx + 1}`,
         summary: ch.summary || "",
         dramaticGoal: ch.dramaticGoal || ch.conflict || "",
+        hook: ch.hook || "",
+        cliffhanger: ch.cliffhanger || "",
         appearingCharacters: ch.appearingCharacters || [],
         outlineInfo: ch,
         content: "",
@@ -666,8 +668,12 @@ export class NovelController {
         <div style="margin-bottom: 6px;">
           <input type="text" class="param-input char-role-input" value="${char.role || ''}" placeholder="Vai trò / Thân phận..." style="font-size: 12px; padding: 4px 8px;">
         </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px;">
+          <input type="text" class="param-input char-desire-input" value="${char.desire || ''}" placeholder="🎯 Dục vọng cốt lõi..." style="font-size: 11px; padding: 4px 8px;" title="Điều nhân vật khao khát đạt được nhất">
+          <input type="text" class="param-input char-traits-input" value="${char.traits || ''}" placeholder="🔍 Nhận diện / Vật chứng..." style="font-size: 11px; padding: 4px 8px;" title="Đặc điểm nhận diện, vết sẹo, thói quen hoặc vật chứng mang theo">
+        </div>
         <div>
-          <textarea class="param-textarea char-personality-input" rows="2" placeholder="Tính cách, động cơ, đặc điểm..." style="font-size: 12px; padding: 4px 8px;">${char.personality || char.traits || ''}</textarea>
+          <textarea class="param-textarea char-personality-input" rows="2" placeholder="Tính cách, khẩu khí, đặc điểm..." style="font-size: 12px; padding: 4px 8px;">${char.personality || ''}</textarea>
         </div>
       `;
 
@@ -681,6 +687,12 @@ export class NovelController {
       });
       card.querySelector(".char-role-input")?.addEventListener("input", (e) => {
         char.role = e.target.value;
+      });
+      card.querySelector(".char-desire-input")?.addEventListener("input", (e) => {
+        char.desire = e.target.value;
+      });
+      card.querySelector(".char-traits-input")?.addEventListener("input", (e) => {
+        char.traits = e.target.value;
       });
       card.querySelector(".char-personality-input")?.addEventListener("input", (e) => {
         char.personality = e.target.value;
@@ -696,6 +708,8 @@ export class NovelController {
     this.currentStory.characterBible.push({
       name: "Nhân Vật Mới",
       role: "Thân phận công khai & bí mật",
+      desire: "Dục vọng cốt lõi",
+      traits: "Vật chứng / Đặc điểm",
       personality: "Tính cách sắc bén, thông minh"
     });
     this.renderStoryBible();
@@ -717,12 +731,18 @@ export class NovelController {
           <button class="btn btn-danger btn-xs btn-delete-chapter" data-idx="${idx}" title="Xóa chương này">&times; Xóa</button>
         </div>
         <div style="margin-top: 8px;">
-          <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 2px;">Diễn biến chính:</label>
+          <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 2px;">📖 Diễn biến chính:</label>
           <textarea class="param-textarea chapter-summary-input" rows="2" placeholder="Tóm tắt nội dung chương...">${ch.summary || ch.outlineInfo?.summary || ''}</textarea>
         </div>
-        <div style="margin-top: 6px;">
-          <label style="font-size: 11px; color: var(--accent-pink); display: block; margin-bottom: 2px;">⚡ Điểm nút vả mặt / Móc câu kết chương:</label>
-          <input type="text" class="param-input chapter-goal-input" value="${ch.dramaticGoal || ch.outlineInfo?.dramaticGoal || ch.conflict || ''}" placeholder="Màn vả mặt hoặc cú twist cuối chương...">
+        <div style="margin-top: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>
+            <label style="font-size: 11px; color: var(--accent-cyan); display: block; margin-bottom: 2px;">🎯 Mục tiêu & Xung đột:</label>
+            <input type="text" class="param-input chapter-goal-input" value="${ch.dramaticGoal || ch.outlineInfo?.dramaticGoal || ch.conflict || ''}" placeholder="Mục tiêu / Điểm nhấn...">
+          </div>
+          <div>
+            <label style="font-size: 11px; color: var(--accent-pink); display: block; margin-bottom: 2px;">⚡ Móc câu kết chương (Cliffhanger):</label>
+            <input type="text" class="param-input chapter-cliffhanger-input" value="${ch.cliffhanger || ch.outlineInfo?.cliffhanger || ''}" placeholder="Móc câu dẫn sang chương sau...">
+          </div>
         </div>
       `;
 
@@ -744,6 +764,9 @@ export class NovelController {
       });
       card.querySelector(".chapter-goal-input")?.addEventListener("input", (e) => {
         ch.dramaticGoal = e.target.value;
+      });
+      card.querySelector(".chapter-cliffhanger-input")?.addEventListener("input", (e) => {
+        ch.cliffhanger = e.target.value;
       });
 
       container.appendChild(card);

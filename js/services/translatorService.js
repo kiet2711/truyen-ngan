@@ -128,32 +128,86 @@ export class TranslatorService {
   }
 
   /**
-   * Chia văn bản raw thành các chunks theo đoạn
+   * Kiểm tra chuỗi văn bản có phải định dạng SRT không
+   */
+  isSrtContent(text) {
+    if (!text || typeof text !== "string") return false;
+    return /\d{1,2}:\d{2}:\d{2}[,\.]\d{1,3}\s*-->\s*\d{1,2}:\d{2}:\d{2}[,\.]\d{1,3}/.test(text);
+  }
+
+  /**
+   * Đếm số lượng đơn vị văn bản (Hỗ trợ chính xác chữ Hán Trung Quốc, từ tiếng Anh và tiếng Việt)
+   */
+  countUnits(text) {
+    if (!text || typeof text !== "string") return 0;
+    // Đếm số lượng chữ Hán CJK (Trung/Nhật/Hàn)
+    const cjkMatches = text.match(/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/g);
+    const cjkCount = cjkMatches ? cjkMatches.length : 0;
+    // Đếm số từ cho phần chữ Latinh (Anh/Việt)
+    const nonCjk = text.replace(/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/g, " ");
+    const words = nonCjk.trim().split(/\s+/).filter(Boolean).length;
+    return cjkCount + words;
+  }
+
+  /**
+   * Chia văn bản tiểu thuyết raw thành các chunks chuẩn xác
    */
   chunkRawText(rawText, modelId) {
     const config = this.getChunkConfig(modelId, "novel");
-    const paragraphs = rawText.split(/\n\s*\n+/);
+    const limit = config.chunkSize;
+    
+    // Tách theo đoạn văn
+    const paragraphs = rawText.split(/\n+/).map(p => p.trim()).filter(Boolean);
     const chunks = [];
     let currentChunk = [];
-    let currentWordCount = 0;
+    let currentCount = 0;
 
-    paragraphs.forEach(para => {
-      const words = para.trim().split(/\s+/).length;
-      if (currentWordCount + words > config.chunkSize && currentChunk.length > 0) {
+    for (const para of paragraphs) {
+      const paraUnits = this.countUnits(para);
+
+      if (paraUnits > limit) {
+        // Đoạn văn quá dài vượt quá hạn mức 1 chunk -> Tách theo câu
+        if (currentChunk.length > 0) {
+          chunks.push(currentChunk.join("\n\n"));
+          currentChunk = [];
+          currentCount = 0;
+        }
+
+        const sentences = para.split(/([。！？\.\!\?\n]+)/).filter(Boolean);
+        let tempChunk = "";
+        for (let s = 0; s < sentences.length; s += 2) {
+          const sent = (sentences[s] || "") + (sentences[s + 1] || "");
+          const sentUnits = this.countUnits(sent);
+          if (this.countUnits(tempChunk) + sentUnits > limit && tempChunk) {
+            chunks.push(tempChunk.trim());
+            tempChunk = sent;
+          } else {
+            tempChunk += sent;
+          }
+        }
+        if (tempChunk.trim()) {
+          chunks.push(tempChunk.trim());
+        }
+      } else if (currentCount + paraUnits > limit && currentChunk.length > 0) {
         chunks.push(currentChunk.join("\n\n"));
         currentChunk = [para];
-        currentWordCount = words;
+        currentCount = paraUnits;
       } else {
         currentChunk.push(para);
-        currentWordCount += words;
+        currentCount += paraUnits;
       }
-    });
+    }
 
     if (currentChunk.length > 0) {
       chunks.push(currentChunk.join("\n\n"));
     }
 
-    return { chunks, config };
+    // Nếu văn bản không có dấu xuống dòng
+    if (chunks.length === 0 && rawText.trim()) {
+      chunks.push(rawText.trim());
+    }
+
+    return { chunks: chunks.filter(Boolean), config };
   }
 
   // ==================== TRANSLATION PROMPTS & EXECUTION ====================
@@ -394,6 +448,7 @@ QUY TẮC:
             currentChunkIndex: i + 1,
             totalChunks: chunks.length,
             progressPercent: Math.round(((i + 1) / chunks.length) * 100),
+            accumulatedText: translatedChunks.join("\n\n"),
             message: `Hoàn thành đoạn ${i + 1}/${chunks.length}!`
           });
         }

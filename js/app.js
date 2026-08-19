@@ -2307,16 +2307,24 @@ class NovelStudioApp {
     const itemCountEl = document.getElementById("transItemCount");
     const wordCountEl = document.getElementById("transWordCount");
 
+    // Tự động nhận diện nếu người dùng dán file SRT
+    const isSrt = translatorService.isSrtContent(text);
+    if (isSrt && this.transMode !== "srt") {
+      this.switchTransMode("srt");
+      return;
+    }
+
     if (this.transMode === "srt") {
       this.transParsedSrt = translatorService.parseSrt(text);
       if (itemCountEl) itemCountEl.textContent = `${this.transParsedSrt.length} dòng phụ đề`;
-      const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-      if (wordCountEl) wordCountEl.textContent = `${wordCount.toLocaleString()} từ`;
+      const units = translatorService.countUnits(text);
+      if (wordCountEl) wordCountEl.textContent = `${units.toLocaleString()} chữ/từ`;
     } else {
       this.transRawText = text;
-      const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-      if (itemCountEl) itemCountEl.textContent = `${text.split(/\n+/).filter(Boolean).length} đoạn văn`;
-      if (wordCountEl) wordCountEl.textContent = `${wordCount.toLocaleString()} từ`;
+      const units = translatorService.countUnits(text);
+      const paras = text.split(/\n+/).map(p => p.trim()).filter(Boolean).length;
+      if (itemCountEl) itemCountEl.textContent = `${paras} đoạn văn`;
+      if (wordCountEl) wordCountEl.textContent = `${units.toLocaleString()} chữ/từ`;
     }
 
     this.updateTransEstimate();
@@ -2336,7 +2344,7 @@ class NovelStudioApp {
       totalUnits = this.transParsedSrt.length;
     } else {
       const text = document.getElementById("transSourceInput")?.value || "";
-      totalUnits = text.trim().split(/\s+/).filter(Boolean).length;
+      totalUnits = translatorService.countUnits(text);
     }
 
     const estimatedChunks = totalUnits > 0 ? Math.ceil(totalUnits / config.chunkSize) : 0;
@@ -2354,8 +2362,8 @@ class NovelStudioApp {
     if (descEl) {
       if (totalUnits === 0) {
         descEl.innerHTML = isGemma
-          ? `Gemma 14.4k RPD: Tự động chia nhỏ 50 dòng/request để an toàn trần 16k TPM`
-          : `Gemini: Gộp chunk tối đa 350 dòng/request (tiết kiệm số lượt gọi)`;
+          ? `Gemma 14.4k RPD: Tự động chia nhỏ 50 dòng hoặc 900 chữ/request để an toàn trần 16k TPM`
+          : `Gemini: Gộp chunk tối đa 350 dòng hoặc 4.000 chữ/request (tiết kiệm số lượt gọi)`;
       } else {
         if (isGemma) {
           descEl.innerHTML = `Model Gemma: Chia thành <strong>${estimatedChunks} phần nhỏ</strong> (Chạy tuần tự, tiêu tốn <strong>${estimatedChunks}/14.400 RPD</strong>)`;
@@ -2402,6 +2410,14 @@ class NovelStudioApp {
       return;
     }
 
+    // Tự động chuyển mode nếu nội dung dán vào không phải SRT
+    const isSrt = translatorService.isSrtContent(sourceText);
+    if (!isSrt && this.transMode === "srt") {
+      this.switchTransMode("novel");
+    } else if (isSrt && this.transMode === "novel") {
+      this.switchTransMode("srt");
+    }
+
     const modelSelect = document.getElementById("transModelSelect");
     const styleInputEl = document.getElementById("transStyleInput");
     const modelId = modelSelect ? modelSelect.value : "gemini-3.6-flash";
@@ -2424,11 +2440,13 @@ class NovelStudioApp {
       if (progressPct) progressPct.textContent = `${p.progressPercent}%`;
       if (progressBar) progressBar.style.width = `${p.progressPercent}%`;
 
-      // Live update result preview
+      // Live update result preview cho cả SRT và Tiểu thuyết
       if (this.transMode === "srt" && Array.isArray(this.transParsedSrt)) {
         if (resultOutput) {
           resultOutput.value = translatorService.buildSrt(this.transParsedSrt, "translated");
         }
+      } else if (p.accumulatedText && resultOutput) {
+        resultOutput.value = p.accumulatedText;
       }
     };
 
@@ -2436,11 +2454,17 @@ class NovelStudioApp {
       if (this.transMode === "srt") {
         this.transParsedSrt = translatorService.parseSrt(sourceText);
         if (this.transParsedSrt.length === 0) {
-          throw new Error("Không thể nhận diện định dạng SRT. Vui lòng kiểm tra lại file phụ đề.");
-        }
-        await translatorService.translateSrt(this.transParsedSrt, modelId, customStyle, onProgress);
-        if (resultOutput) {
-          resultOutput.value = translatorService.buildSrt(this.transParsedSrt, "translated");
+          // Fallback sang Novel nếu parse SRT không ra item nào
+          const fullTranslated = await translatorService.translateNovel(sourceText, modelId, customStyle, onProgress);
+          this.transTranslatedText = fullTranslated;
+          if (resultOutput) {
+            resultOutput.value = fullTranslated;
+          }
+        } else {
+          await translatorService.translateSrt(this.transParsedSrt, modelId, customStyle, onProgress);
+          if (resultOutput) {
+            resultOutput.value = translatorService.buildSrt(this.transParsedSrt, "translated");
+          }
         }
       } else {
         const fullTranslated = await translatorService.translateNovel(sourceText, modelId, customStyle, onProgress);

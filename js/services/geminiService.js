@@ -137,17 +137,30 @@ class GeminiService {
 
   /**
    * Sinh 3 bản đề xuất cốt truyện / bối cảnh / motif khác nhau theo Tông Truyện đã chọn
+   * Hỗ trợ chế độ AI Tự Chọn Tông Giọng (auto) và Tự Do Phối Hợp Trope (0 thẻ)
    * Áp dụng công thức 5 lớp: Cam kết cảm xúc -> Mối quan hệ áp lực -> Vũ đài xung đột -> Động cơ cốt truyện -> Twist vả mặt
    */
   async generateStoryConcepts(params, onProgress = null) {
     const settings = storageService.getSettings();
     const model = settings.model || "gemini-3.6-flash";
-    const toneId = params.selectedTone || "dramatic";
+    const toneId = params.selectedTone || "auto";
     const toneObj = STORY_TONES.find(t => t.id === toneId) || STORY_TONES[0];
+    const isAutoTone = toneId === "auto";
+    const hasTags = Array.isArray(params.selectedTags) && params.selectedTags.length > 0;
     const systemBase = getBaseSystemPrompt(toneId);
 
     const systemPrompt = `${systemBase}
-Nhiệm vụ của bạn là dựa vào TÔNG TRUYỆN (${toneObj.name}), các TAG TROPE và Ý TƯỞNG của người dùng để sáng tạo ra ĐÚNG 3 BẢN ĐỀ XUẤT CỐT TRUYỆN (Concepts / Pitch Options) mang tính kịch tính đỉnh cao, bám sát phong cách được chọn.
+Nhiệm vụ của bạn là sáng tạo ra ĐÚNG 3 BẢN ĐỀ XUẤT CỐT TRUYỆN (Concepts / Pitch Options) mang tính kịch tính đỉnh cao và hấp dẫn cho người đọc.
+
+${isAutoTone 
+  ? `YÊU CẦU ĐA DẠNG HÓA TÔNG TRUYỆN (CHẾ ĐỘ TỰ ĐỘNG):
+Người dùng muốn để AI tự do quyết định. Hãy sáng tạo 3 bản đề xuất với 3 SẮC THÁI & PHONG CÁCH KHÁC BIỆT HOÀN TOÀN:
+- Bản đề xuất #1: Kịch tính cao / Vả mặt cực mạnh / Đấu trí gay gắt (Zhihu Short Drama).
+- Bản đề xuất #2: Tình cảm lãng mạn / Ngọt sủng / Song hướng thầm mến hoặc Cưới trước yêu sau.
+- Bản đề xuất #3: Trinh thám ly kỳ / Hắc ám phản chuyển hoặc Hài hước ăn dưa giải trí.
+(Trong phần Bối cảnh & Nhân vật của từng bản, hãy ghi rõ phong cách thể loại tương ứng để người dùng dễ nhận biết).`
+  : `YÊU CẦU BÁM SÁT TÔNG TRUYỆN: Cả 3 bản đề xuất phải bám sát phong cách "${toneObj.name}" (${toneObj.desc}).`
+}
 
 CÔNG THỨC 5 LỚP KỊCH BẢN BẮT BUỘC TRONG TỪNG ĐỀ XUẤT:
 1. MÓC CÂU (Hook): Đặt nhân vật vào ngay một tình huống nguy cơ, sỉ nhục, bất thường hoặc tổn thất không thể đảo ngược (1-2 câu giật gân).
@@ -163,7 +176,7 @@ BẮT BUỘC trả về JSON thuần túy theo cấu trúc:
       "id": 1,
       "title": "Tựa đề truyện cuốn hút, hợp thể loại",
       "hook": "Câu mở đầu / tình huống mở màn thu hút người đọc ngay lập tức (1-2 câu giật gân)",
-      "settingAndCharacters": "Bối cảnh & Tên nhân vật Hán Việt chuẩn kèm Mối quan hệ áp lực cao (VD: Cố gia Kinh Đô, Thẩm Chiêu Chiêu (Thiên kim thật) - Cố Hoài An (Tổng tài lạnh lùng))",
+      "settingAndCharacters": "Bối cảnh & Tên nhân vật Hán Việt chuẩn kèm Mối quan hệ áp lực cao (VD: [Kịch tính vả mặt] Cố gia Kinh Đô, Thẩm Chiêu Chiêu (Thiên kim thật) - Cố Hoài An (Tổng tài lạnh lùng))",
       "motifAndConflict": "Vũ đài xung đột công khai & Động cơ cốt truyện chủ đạo",
       "plotSummary": "Tóm tắt mạch leo thang 3-4 câu theo đúng tông truyện đã chọn",
       "climaxTwist": "Cú twist vả mặt sảng khoái / Điểm cao trào cảm xúc nhất"
@@ -189,10 +202,10 @@ BẮT BUỘC trả về JSON thuần túy theo cấu trúc:
   ]
 }`;
 
-    const userPrompt = `Hãy tạo 3 bản đề xuất cốt truyện theo Tông Truyện "${toneObj.name}" từ các yêu cầu sau:
-- Tông truyện chính: ${toneObj.name} (${toneObj.desc})
-- Các Trope đã chọn: ${(params.selectedTags || []).join(", ")}
-${params.userPremise ? `- Ý tưởng / Tình huống người dùng tự viết: "${params.userPremise}"` : "- Ý tưởng: Người dùng không nhập, hãy tự do sáng tạo tổ hợp hấp dẫn nhất theo đúng tông truyện đã chọn."}
+    const userPrompt = `Hãy tạo 3 bản đề xuất cốt truyện từ các yêu cầu sau:
+- Định hướng Tông truyện: ${isAutoTone ? "Để AI tự do sáng tạo 3 màu sắc khác nhau" : `${toneObj.name} (${toneObj.desc})`}
+- Yêu cầu Trope: ${hasTags ? `Các Trope đã chọn: ${params.selectedTags.join(", ")}` : "Người dùng không chọn thẻ nào -> AI tự do tuyển chọn Trope & Vũ đài xung đột hấp dẫn nhất."}
+${params.userPremise ? `- Ý tưởng / Tình huống người dùng tự viết: "${params.userPremise}"` : "- Ý tưởng: Người dùng không nhập bất kỳ ý tưởng nào -> AI tự do sáng tạo 100% từ con số 0 theo các motif thịnh hành nhất."}
 - Số lượng chương dự kiến: ${params.chapterCount || 6} chương.
 
 Nhắc lại: Tuyệt đối không dùng tên hay địa điểm Việt Nam. Sử dụng tên Hán Việt Trung Quốc chuẩn. Áp dụng quy chuẩn Khử Mùi AI và Công thức 5 lớp kịch bản.`;
@@ -201,7 +214,7 @@ Nhắc lại: Tuyệt đối không dùng tên hay địa điểm Việt Nam. S�
       const apiKey = this.getActiveKey();
       const url = `${BASE_API_URL}/${model}:generateContent?key=${apiKey}`;
 
-      if (onProgress) onProgress(`AI đang sáng tạo 3 bản đề xuất cốt truyện (${toneObj.name})...`);
+      if (onProgress) onProgress(isAutoTone ? "AI đang sáng tạo 3 bản đề xuất đa dạng phong cách..." : `AI đang sáng tạo 3 bản đề xuất cốt truyện (${toneObj.name})...`);
 
       const response = await fetch(url, {
         method: "POST",

@@ -17,8 +17,8 @@ export class NovelController {
     this.app = app;
     this.currentStep = 1;
     this.customTags = storageService.getCustomTags();
-    this.selectedTone = "dramatic";
-    this.selectedTags = new Set(["Zhihu style", "Vả mặt cực mạnh", "Plot twist bất ngờ", "Báo thù"]);
+    this.selectedTone = "auto";
+    this.selectedTags = new Set(["Vả mặt cực mạnh", "Plot twist phản chuyển", "Báo thù rửa hận"]);
     this.generatedConcepts = [];
     this.selectedConcept = null;
     this.currentStory = null;
@@ -33,6 +33,7 @@ export class NovelController {
     this.bindEvents();
     this.renderToneSelector();
     this.renderTropeCloud();
+    this.updateSelectedTagsBadge();
   }
 
   // ==================== STEP 1: STORY TONE SELECTOR ====================
@@ -130,16 +131,13 @@ export class NovelController {
 
         pill.addEventListener("click", () => {
           if (this.selectedTags.has(tag.name)) {
-            if (this.selectedTags.size > 1) {
-              this.selectedTags.delete(tag.name);
-              pill.classList.remove("active");
-            } else {
-              this.app.showToast("Cần giữ lại ít nhất 1 thẻ trope!", "warning");
-            }
+            this.selectedTags.delete(tag.name);
+            pill.classList.remove("active");
           } else {
             this.selectedTags.add(tag.name);
             pill.classList.add("active");
           }
+          this.updateSelectedTagsBadge();
         });
 
         list.appendChild(pill);
@@ -182,16 +180,13 @@ export class NovelController {
 
       pill.addEventListener("click", () => {
         if (this.selectedTags.has(tagName)) {
-          if (this.selectedTags.size > 1) {
-            this.selectedTags.delete(tagName);
-            pill.classList.remove("active");
-          } else {
-            this.app.showToast("Cần giữ lại ít nhất 1 thẻ trope!", "warning");
-          }
+          this.selectedTags.delete(tagName);
+          pill.classList.remove("active");
         } else {
           this.selectedTags.add(tagName);
           pill.classList.add("active");
         }
+        this.updateSelectedTagsBadge();
       });
 
       customList.appendChild(pill);
@@ -209,6 +204,36 @@ export class NovelController {
 
     customBlock.appendChild(customList);
     container.appendChild(customBlock);
+
+    this.updateSelectedTagsBadge();
+  }
+
+  clearAllTags() {
+    this.selectedTags.clear();
+    document.querySelectorAll(".trope-tag-pill").forEach(p => p.classList.remove("active"));
+    this.updateSelectedTagsBadge();
+    this.app.showToast("Đã bỏ chọn tất cả thẻ! AI sẽ tự do tuyển chọn Trope tối ưu.", "info");
+  }
+
+  applyRandomTropes() {
+    const randoms = getRandomTropes(4);
+    this.selectedTags = new Set(randoms);
+    this.renderTropeCloud();
+    this.updateSelectedTagsBadge();
+    this.app.showToast(`Đã chọn ngẫu nhiên 4 thẻ: ${randoms.join(", ")}`, "info");
+  }
+
+  updateSelectedTagsBadge() {
+    const badge = document.getElementById("selectedTagsCountBadge");
+    if (badge) {
+      if (this.selectedTags.size === 0) {
+        badge.textContent = "✨ AI Tự Do Tuyển Chọn (0 thẻ)";
+        badge.className = "badge badge-cyan";
+      } else {
+        badge.textContent = `Đã chọn ${this.selectedTags.size} thẻ`;
+        badge.className = "badge badge-purple";
+      }
+    }
   }
 
   toggleCustomTagPanel(show) {
@@ -315,21 +340,26 @@ export class NovelController {
       targetWords
     };
 
+    const toneText = toneObj.id === 'auto' ? 'Đa Dạng Phong Cách' : toneObj.name;
+    const tagCountText = params.selectedTags.length > 0 
+      ? `Áp dụng ${params.selectedTags.length} thẻ trope được chọn` 
+      : `AI tự do sáng tạo kịch bản 100% từ con số 0`;
+
     const btn = document.getElementById("btnGenerateConcepts");
     const container = document.getElementById("conceptsGrid");
     const section = document.getElementById("conceptsSection") || document.getElementById("conceptsResultSection");
 
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = `<span class="typing-cursor"></span> AI đang tạo 3 kịch bản (${toneObj.name})...`;
+      btn.innerHTML = `<span class="typing-cursor"></span> AI đang tạo 3 kịch bản (${toneText})...`;
     }
     if (section) section.style.display = "block";
     if (container) {
       container.innerHTML = `
         <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--accent-pink);">
           <div style="font-size: 28px; margin-bottom: 12px; animation: spin 2s linear infinite;">🪄</div>
-          <div style="font-weight: 600; font-size: 15px;">Đang kiến tạo 3 bản đề xuất theo phong cách ${toneObj.name}...</div>
-          <div style="font-size: 12px; color: var(--text-dim); margin-top: 6px;">Áp dụng ${params.selectedTags.length} thẻ trope được chọn</div>
+          <div style="font-weight: 600; font-size: 15px;">Đang kiến tạo 3 bản đề xuất (${toneText})...</div>
+          <div style="font-size: 12px; color: var(--text-dim); margin-top: 6px;">${tagCountText}</div>
         </div>
       `;
     }
@@ -1298,6 +1328,11 @@ export class NovelController {
     const btnRandomTropes = document.getElementById("btnRandomTropes");
     if (btnRandomTropes) {
       btnRandomTropes.addEventListener("click", () => this.applyRandomTropes());
+    }
+
+    const btnClearAllTags = document.getElementById("btnClearAllTags");
+    if (btnClearAllTags) {
+      btnClearAllTags.addEventListener("click", () => this.clearAllTags());
     }
 
     const btnSamplePremise = document.getElementById("btnSamplePremise");

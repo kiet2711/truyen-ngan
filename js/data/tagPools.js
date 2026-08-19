@@ -5,6 +5,17 @@
 
 export const STORY_TONES = [
   {
+    id: "auto",
+    icon: "🎲",
+    name: "Để AI Tự Chọn Tông Giọng",
+    subname: "Auto / AI Choice",
+    desc: "AI tự động đa dạng hóa: 3 bản đề xuất sẽ mang 3 phong cách khác biệt (Vả mặt, Ngọt sủng, Trinh thám/Hài hước) để bạn tha hồ chọn.",
+    badge: "Tự động 100%",
+    promptInstruction: `TỰ ĐỘNG LỰA CHỌN PHONG CÁCH TỐI ƯU:
+- Hãy tự do sáng tạo 3 bản đề xuất với 3 sắc thái và phong cách khác biệt rõ rệt (Bản 1: Kịch tính vả mặt cao trào; Bản 2: Tình cảm ngọt sủng/song cường; Bản 3: Trinh thám hồi hộp hoặc Hài hước ăn dưa).
+- Mỗi bản đề xuất tự xác định Tông truyện phù hợp nhất để người dùng dễ dàng lựa chọn.`
+  },
+  {
     id: "dramatic",
     icon: "⚡",
     name: "Kịch Tính / Vả Mặt",

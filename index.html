@@ -150,7 +150,7 @@
 
         <div class="card-header-row" style="margin-top: 24px;">
           <div class="card-title">
-            <span>🏷️</span> Các Trope Chính (Chọn các thẻ phù hợp):
+            <span>🏷️</span> Các Trope Chính (Tùy chọn - Hoặc để AI tự phối):
           </div>
           <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <button id="btnToggleAddTag" class="btn btn-secondary btn-sm btn-glow-pink">
@@ -159,7 +159,10 @@
             <button id="btnRandomTropes" class="btn btn-secondary btn-sm">
               🎲 Đổi Trope Ngẫu Nhiên
             </button>
-            <span class="badge badge-purple">Chọn 3 - 6 thẻ để định hình phong cách</span>
+            <button id="btnClearAllTags" class="btn btn-secondary btn-sm" title="Bỏ chọn hết để AI tự do lựa chọn 100%">
+              🧹 Bỏ Chọn Hết (AI Tự Phối)
+            </button>
+            <span class="badge badge-purple" id="selectedTagsCountBadge">Đã chọn 4 thẻ</span>
           </div>
         </div>
 

@@ -91,6 +91,11 @@
         <span class="workspace-tab-title">Dịch Thuật Studio</span>
         <span class="workspace-tab-tag">Tiểu Thuyết & Subtitles .SRT</span>
       </button>
+      <button class="workspace-tab" id="tabNavAudioStudio">
+        <span class="workspace-tab-icon">🎙️</span>
+        <span class="workspace-tab-title">Tạo Audio Truyện (TTS)</span>
+        <span class="workspace-tab-tag">CapCut Đa Luồng Siêu Tốc</span>
+      </button>
     </div>
 
     <!-- ==================== WORKSPACE: NOVEL STUDIO ==================== -->
@@ -688,6 +693,188 @@
       </div>
 
     </div> <!-- /translatorStudioWorkspace -->
+
+    <!-- ==================== WORKSPACE: AUDIO TTS STUDIO ==================== -->
+    <div id="audioStudioWorkspace" style="display: none;">
+      
+      <!-- Top Card: Voice Selection & Generation Parameters -->
+      <div class="studio-card" style="margin-bottom: 20px;">
+        <div class="card-header-row" style="margin-bottom: 12px;">
+          <div class="card-title">
+            <span>🎙️</span> Cấu Hình Giọng Đọc AI & Tốc Độ (CapCut TTS):
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <span class="badge badge-emerald" id="audioVoiceCountBadge">100+ Giọng Đọc</span>
+            <button id="btnAudioResetDevice" class="btn btn-secondary btn-xs" title="Đổi Device ID trên máy chủ CapCut để gỡ giới hạn/ban">
+              🔄 Đổi ID (Gỡ Ban)
+            </button>
+          </div>
+        </div>
+
+        <div class="audio-config-grid">
+          
+          <!-- Column 1: Language Filter & Voice Search -->
+          <div class="audio-config-col">
+            <label class="param-label">Ngôn Ngữ & Tìm Kiếm Giọng:</label>
+            <div class="audio-lang-chips" id="audioLangChips">
+              <button type="button" class="btn-style-chip active" data-lang="vi-VN">🇻🇳 Tiếng Việt</button>
+              <button type="button" class="btn-style-chip" data-lang="en-US">🇬🇧 English</button>
+              <button type="button" class="btn-style-chip" data-lang="zh-CN">🇨🇳 中文</button>
+              <button type="button" class="btn-style-chip" data-lang="ja-JP">🇯🇵 日本語</button>
+              <button type="button" class="btn-style-chip" data-lang="all">🌐 Tất Cả</button>
+            </div>
+            <div style="margin-top: 8px; position: relative;">
+              <input type="text" id="audioVoiceSearch" class="param-input" placeholder="🔍 Tìm kiếm giọng đọc (ví dụ: Hoạt Ngôn, Ngọt Ngào, Nam Trầm...)" style="padding-left: 10px;">
+            </div>
+          </div>
+
+          <!-- Column 2: Voice Selector Dropdown / Grid -->
+          <div class="audio-config-col">
+            <label class="param-label">Chọn Giọng Đọc:</label>
+            <select id="audioVoiceSelect" class="param-select" style="width: 100%; height: 42px; font-weight: 600;">
+              <!-- Populated dynamically -->
+              <option value="BV074_streaming" data-resource="7264854897953083905" selected>Cô Gái Hoạt Ngôn (Nữ Miền Bắc - Rất Tự Nhiên)</option>
+              <option value="BV421_vivn_streaming" data-resource="7252594014782755330">Nhỏ Ngọt Ngào (Nữ Trẻ Trung - Dễ Thương)</option>
+              <option value="vi_female_huong" data-resource="7264854897953083905">Giọng Nữ Phổ Thông (Nữ Chuẩn)</option>
+              <option value="BV074_streaming_dsp" data-resource="7550087831092251920">Giọng Bé (Dễ Thương)</option>
+            </select>
+          </div>
+
+          <!-- Column 3: Speed & Multi-threading Sliders -->
+          <div class="audio-config-col audio-sliders-col">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">⚡ Tốc độ đọc:</span>
+                <span class="slider-val" id="audioRateVal">1.0x</span>
+              </div>
+              <input type="range" id="audioRateSlider" min="0.5" max="2.0" step="0.1" value="1.0" class="audio-range">
+            </div>
+
+            <div class="slider-group" style="margin-top: 8px;">
+              <div class="slider-header">
+                <span class="slider-label">🚀 Đa luồng (Threads):</span>
+                <span class="slider-val" id="audioThreadsVal">30 luồng</span>
+              </div>
+              <input type="range" id="audioThreadsSlider" min="5" max="100" step="5" value="30" class="audio-range">
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Main Dual Grid: Text Editor & Audio Player -->
+      <div class="trans-dual-grid">
+        
+        <!-- Left: Text Editor -->
+        <div class="studio-card trans-pane-card">
+          <div class="card-header-row" style="margin-bottom: 8px;">
+            <div class="card-title">
+              <span>📝</span> Văn Bản Cần Tạo Audio:
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+              <button id="btnAudioCleanText" class="btn btn-secondary btn-xs" title="Tự động làm sạch markdown, tiêu đề chương và chuyển số thành chữ">
+                ✨ Làm Sạch Chuẩn Audio
+              </button>
+              <button id="btnAudioPaste" class="btn btn-secondary btn-xs">📋 Dán</button>
+              <button id="btnAudioClear" class="btn btn-secondary btn-xs">🗑️ Xóa</button>
+            </div>
+          </div>
+          
+          <textarea id="audioTextInput" class="trans-textarea" placeholder="Dán nội dung truyện hoặc kịch bản cần tạo audio tại đây...&#10;&#10;Hoặc bấm 'Gửi Sang Tạo Audio' từ Tab Sáng Tác hoặc Tab Dịch Thuật để nạp truyện tự động."></textarea>
+          
+          <div style="display: flex; justify-content: space-between; font-size: 12px; color: #94a3b8; margin-top: 6px;">
+            <span id="audioTextStats">0 từ • 0 ký tự</span>
+            <span id="audioChunkEstimate">0 đoạn chunk (~0s hoàn thành)</span>
+          </div>
+        </div>
+
+        <!-- Right: Progress & Audio Player -->
+        <div class="studio-card trans-pane-card" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div class="card-header-row" style="margin-bottom: 8px;">
+              <div class="card-title">
+                <span>🎧</span> Trình Phát Âm Thanh (Audio Player):
+              </div>
+              <span class="badge badge-purple" id="audioStatusBadge">Sẵn Sàng</span>
+            </div>
+
+            <!-- Progress Tracker -->
+            <div id="audioProgressBox" class="trans-progress-box" style="display: none; margin-bottom: 16px;">
+              <div class="trans-progress-status-row">
+                <span id="audioProgressMsg">Đang khởi tạo đa luồng...</span>
+                <strong id="audioProgressPct">0%</strong>
+              </div>
+              <div class="quota-progress-track" style="height: 8px;">
+                <div class="quota-progress-bar rpm-bar" id="audioProgressBar" style="width: 0%;"></div>
+              </div>
+            </div>
+
+            <!-- Audio Player Visualizer & Controls -->
+            <div class="audio-player-card">
+              <div class="player-cover-art">
+                <div class="player-pulse-wave" id="audioWaveform">
+                  <span></span><span></span><span></span><span></span><span></span>
+                </div>
+                <div class="player-title" id="audioPlayerTitle">Chưa có bản ghi âm</div>
+                <div class="player-subtitle" id="audioPlayerSubtitle">Nhập văn bản và bấm "Tạo Audio" để nghe thử</div>
+              </div>
+
+              <!-- HTML5 Audio Element -->
+              <audio id="mainAudioElement" controls style="width: 100%; margin-top: 14px; border-radius: 8px;"></audio>
+
+              <div class="player-quick-controls" style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; gap: 8px;">
+                  <button id="btnAudioSkipBack" class="btn btn-secondary btn-sm" title="Lùi 5 giây">⏪ -5s</button>
+                  <button id="btnAudioSkipFwd" class="btn btn-secondary btn-sm" title="Tiến 5 giây">⏩ +5s</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 11px; color: #94a3b8;">Tốc độ phát:</span>
+                  <select id="audioPlaybackRate" class="param-select param-select-sm" style="min-width: 70px; padding: 3px 6px;">
+                    <option value="0.75">0.75x</option>
+                    <option value="1.0" selected>1.0x</option>
+                    <option value="1.25">1.25x</option>
+                    <option value="1.5">1.5x</option>
+                    <option value="2.0">2.0x</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Export & Save Group -->
+          <div class="audio-export-actions" style="margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 14px;">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button id="btnDownloadMp3" class="btn btn-success btn-md" disabled style="flex: 1;">
+                <span>📥</span> Tải File .MP3
+              </button>
+              <button id="btnSaveAudioToLib" class="btn btn-secondary btn-md" disabled>
+                <span>📚</span> Lưu Vào Thư Viện
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Action Bar -->
+      <div class="studio-card trans-action-bar-card" style="margin-top: 16px;">
+        <div class="trans-actions-row">
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button id="btnStartGenerateAudio" class="btn btn-primary btn-lg btn-glow">
+              <span>🎙️</span> Bắt Đầu Tạo Audio (TTS)
+            </button>
+            <button id="btnCancelGenerateAudio" class="btn btn-danger btn-lg" style="display: none;">
+              <span>⏹️</span> Hủy Bỏ
+            </button>
+          </div>
+          <div style="font-size: 12px; color: #94a3b8;">
+            ⚡ Đa luồng CapCut Cloud: Xử lý 10.000 từ trong ~10-15 giây • Không tốn CPU máy tính
+          </div>
+        </div>
+      </div>
+
+    </div> <!-- /audioStudioWorkspace -->
 
   </div>
 

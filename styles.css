@@ -2417,5 +2417,127 @@ body {
     flex-direction: column;
     align-items: stretch;
   }
+  .audio-config-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
+
+/* ==================== AUDIO TTS STUDIO STYLES ==================== */
+.audio-config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.1fr;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.audio-config-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.audio-lang-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.audio-sliders-col {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.slider-label {
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+.slider-val {
+  color: #a78bfa;
+  font-family: monospace;
+  font-weight: 700;
+}
+
+.audio-range {
+  width: 100%;
+  accent-color: #8b5cf6;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+/* Audio Player Card */
+.audio-player-card {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 8px;
+}
+
+.player-cover-art {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(59, 130, 246, 0.2));
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.player-pulse-wave {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  margin-bottom: 10px;
+}
+
+.player-pulse-wave span {
+  width: 4px;
+  height: 100%;
+  background: #8b5cf6;
+  border-radius: 999px;
+  animation: pulseWave 1.2s infinite ease-in-out;
+}
+
+.player-pulse-wave span:nth-child(2) { animation-delay: 0.2s; }
+.player-pulse-wave span:nth-child(3) { animation-delay: 0.4s; }
+.player-pulse-wave span:nth-child(4) { animation-delay: 0.6s; }
+.player-pulse-wave span:nth-child(5) { animation-delay: 0.8s; }
+
+@keyframes pulseWave {
+  0%, 100% { transform: scaleY(0.2); opacity: 0.4; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+
+.player-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 2px;
+}
+
+.player-subtitle {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
 

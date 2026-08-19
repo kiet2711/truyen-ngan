@@ -17,7 +17,8 @@ Thumbs.db
 .env.local
 
 # Local fallback data
-data/
+/data/
+!js/data/
 
 # Temporary files
 *.tmp

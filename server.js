@@ -180,7 +180,8 @@ const server = http.createServer(async (req, res) => {
         const body = await parseBody(req);
         const saved = await auth.saveUserApiSettings(user.id, {
           api_keys: body.api_keys || body.apiKeys,
-          settings: body.settings
+          settings: body.settings,
+          api_usage: body.api_usage || body.apiUsage
         });
         return sendJson(res, 200, { success: true, ...saved });
       }

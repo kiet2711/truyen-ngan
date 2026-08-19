@@ -199,7 +199,7 @@ class AuthService {
     return null;
   }
 
-  async saveUserApiSettings(apiKeys, settings) {
+  async saveUserApiSettings(apiKeys, settings, apiUsage = null) {
     if (!this.isLoggedIn()) return null;
 
     try {
@@ -211,7 +211,8 @@ class AuthService {
         },
         body: JSON.stringify({
           api_keys: apiKeys,
-          settings: settings
+          settings: settings,
+          api_usage: apiUsage || {}
         })
       });
       if (res.ok) {

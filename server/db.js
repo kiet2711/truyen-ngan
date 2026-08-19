@@ -171,8 +171,11 @@ async function runPostgresMigrations() {
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       api_keys TEXT[] DEFAULT '{}',
       settings JSONB DEFAULT '{}',
+      api_usage JSONB DEFAULT '{}',
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
+
+    ALTER TABLE user_api_settings ADD COLUMN IF NOT EXISTS api_usage JSONB DEFAULT '{}';
   `;
   await pool.query(query);
 

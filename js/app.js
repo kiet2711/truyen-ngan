@@ -308,7 +308,7 @@ class NovelStudioApp {
     try {
       const user = await authService.init();
       if (user) {
-        // Load cloud custom tags
+        // 1. Load cloud custom tags
         const cloudTags = await authService.fetchUserTags();
         if (cloudTags && Array.isArray(cloudTags)) {
           this.novelController.customTags = cloudTags;
@@ -316,8 +316,11 @@ class NovelStudioApp {
           this.novelController.renderTropeCloud();
         }
 
-        // Load cloud API settings & keys
+        // 2. Load cloud API settings & Token Usage
         await this.syncUserApiSettingsFromCloud();
+
+        // 3. Load cloud stories to library
+        await this.syncUserStoriesFromCloud();
       }
     } catch (err) {
       this.showToast(err.message, "error");
@@ -335,10 +338,29 @@ class NovelStudioApp {
         if (cloudData.settings && typeof cloudData.settings === 'object' && Object.keys(cloudData.settings).length > 0) {
           storageService.saveSettings(cloudData.settings);
         }
+        if (cloudData.api_usage && typeof cloudData.api_usage === 'object') {
+          storageService.mergeApiUsageData(cloudData.api_usage);
+        }
         this.updateApiKeyStatus();
+        this.updateQuotaDisplay();
       }
     } catch (e) {
       console.warn("Sync API settings error:", e);
+    }
+  }
+
+  async syncUserStoriesFromCloud() {
+    if (!authService.isLoggedIn()) return;
+    try {
+      const cloudStories = await authService.fetchUserStories();
+      if (Array.isArray(cloudStories) && cloudStories.length > 0) {
+        for (const story of cloudStories) {
+          await storageService.saveStory(story);
+        }
+        await this.updateSavedCount();
+      }
+    } catch (e) {
+      console.warn("Sync user stories error:", e);
     }
   }
 
@@ -439,7 +461,7 @@ class NovelStudioApp {
       this.showToast(`Chào mừng bạn trở lại, ${user.username}! 🎉`, "success");
       this.closeAuthModal();
 
-      // Đồng bộ tags và settings sau khi đăng nhập
+      // Đồng bộ tags, settings, token usage và thư viện truyện từ Neon Cloud
       const cloudTags = await authService.fetchUserTags();
       if (cloudTags && Array.isArray(cloudTags) && cloudTags.length > 0) {
         this.novelController.customTags = cloudTags;
@@ -447,6 +469,7 @@ class NovelStudioApp {
         this.novelController.renderTropeCloud();
       }
       await this.syncUserApiSettingsFromCloud();
+      await this.syncUserStoriesFromCloud();
 
     } catch (err) {
       if (alertBox) {
@@ -483,6 +506,14 @@ class NovelStudioApp {
       const user = await authService.register(username, email, password);
       this.showToast(`Chào mừng thành viên mới: ${user.username}! 🌟`, "success");
       this.closeAuthModal();
+
+      // Tự động sao lưu cấu hình API, Tags và Truyện hiện tại lên tài khoản mới
+      await authService.saveUserTags(storageService.getCustomTags());
+      await authService.saveUserApiSettings(storageService.getApiKeys(), storageService.getSettings(), storageService.getRawApiUsageData());
+      const localStories = await storageService.getAllStories();
+      for (const st of localStories) {
+        await authService.saveUserStory(st);
+      }
     } catch (err) {
       if (alertBox) {
         alertBox.textContent = err.message;
@@ -796,8 +827,8 @@ class NovelStudioApp {
     storageService.saveSettings(settings);
 
     if (authService.isLoggedIn()) {
-      await authService.saveUserApiSettings(keys, settings);
-      this.showToast("Đã lưu và đồng bộ API Key lên tài khoản Neon Cloud! ☁️", "success");
+      await authService.saveUserApiSettings(keys, settings, storageService.getRawApiUsageData());
+      this.showToast("Đã lưu và đồng bộ API Key & Thống kê Token lên tài khoản Neon Cloud! ☁️", "success");
     } else {
       this.showToast("Đã lưu cấu hình API Key vào máy!", "success");
     }
@@ -842,6 +873,9 @@ class NovelStudioApp {
   }
 
   async openStoryLibraryModal() {
+    if (authService.isLoggedIn()) {
+      await this.syncUserStoriesFromCloud();
+    }
     const stories = await storageService.getAllStories();
     this.renderLibraryList(stories);
     document.getElementById("storyLibraryModal").classList.add("open");
@@ -866,8 +900,42 @@ class NovelStudioApp {
     if (!container) return;
     container.innerHTML = "";
 
+    // Render Cloud Sync status banner
+    const syncBanner = document.createElement("div");
+    if (authService.isLoggedIn()) {
+      syncBanner.style.cssText = "margin-bottom: 14px; padding: 10px 14px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; font-size: 12px; color: var(--accent-emerald); display: flex; align-items: center; justify-content: space-between;";
+      syncBanner.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span>☁️</span>
+          <span>Đã kết nối tài khoản Neon Cloud (<strong>${authService.currentUser.username}</strong>). Truyện được sao lưu vĩnh viễn.</span>
+        </div>
+        <span class="badge badge-emerald" style="font-size: 10px;">${stories.length} Truyện</span>
+      `;
+    } else {
+      syncBanner.style.cssText = "margin-bottom: 14px; padding: 10px 14px; background: rgba(236, 72, 153, 0.1); border: 1px solid rgba(236, 72, 153, 0.25); border-radius: 8px; font-size: 12px; color: var(--accent-pink); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;";
+      syncBanner.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span>💡</span>
+          <span>Đăng nhập tài khoản để tự động sao lưu truyện vĩnh viễn lên cơ sở dữ liệu Neon Cloud!</span>
+        </div>
+        <button class="btn btn-secondary btn-xs" id="btnLibraryLoginShortcut" style="font-size: 11px;">Đăng Nhập Ngay</button>
+      `;
+    }
+    container.appendChild(syncBanner);
+
+    const btnLoginShortcut = syncBanner.querySelector("#btnLibraryLoginShortcut");
+    if (btnLoginShortcut) {
+      btnLoginShortcut.addEventListener("click", () => {
+        this.closeStoryLibraryModal();
+        this.openAuthModal("login");
+      });
+    }
+
     if (stories.length === 0) {
-      container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 24px;">Chưa có truyện nào trong thư viện.</div>`;
+      const emptyMsg = document.createElement("div");
+      emptyMsg.style.cssText = "text-align: center; color: var(--text-muted); padding: 24px;";
+      emptyMsg.textContent = "Chưa có truyện nào trong thư viện.";
+      container.appendChild(emptyMsg);
       return;
     }
 
@@ -886,10 +954,10 @@ class NovelStudioApp {
           <div>
             <div style="display: flex; align-items: center; gap: 8px;">
               <strong style="font-size: 16px;">${story.title}</strong>
-              <span class="badge badge-pink" style="font-size: 10px;">${story.params?.tone || 'Zhihu High Drama'}</span>
+              <span class="badge badge-pink" style="font-size: 10px;">${story.params?.selectedTone || story.params?.tone || 'Zhihu Drama'}</span>
             </div>
             <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-              ${story.concept?.premise || 'Chưa có tóm tắt'}
+              ${story.concept?.premise || story.logline || 'Chưa có tóm tắt'}
             </div>
             <div style="display: flex; gap: 12px; align-items: center; margin-top: 8px; font-size: 11.5px; color: var(--text-dim);">
               <span>${new Date(story.createdAt).toLocaleDateString("vi-VN")}</span>
@@ -918,8 +986,15 @@ class NovelStudioApp {
       card.querySelector(".btn-delete-story").addEventListener("click", async () => {
         if (confirm(`Bạn có chắc chắn muốn xóa bộ truyện "${story.title}" không?`)) {
           await storageService.deleteStory(story.id);
+          if (authService.isLoggedIn()) {
+            try {
+              await authService.deleteUserStory(story.id);
+            } catch (e) {
+              console.warn("Delete cloud story error:", e);
+            }
+          }
           await this.updateSavedCount();
-          this.openStoryLibraryModal();
+          await this.openStoryLibraryModal();
           this.showToast("Đã xóa truyện khỏi thư viện.", "info");
         }
       });
@@ -931,6 +1006,21 @@ class NovelStudioApp {
   // ==================== GLOBAL EVENT BINDINGS ====================
 
   bindGlobalEvents() {
+    // 0. Auto Sync Token Usage & Settings to Neon Cloud
+    window.addEventListener("novel_studio_request_cloud_sync", async () => {
+      if (authService.isLoggedIn()) {
+        try {
+          const keys = storageService.getApiKeys();
+          const settings = storageService.getSettings();
+          const usage = storageService.getRawApiUsageData();
+          await authService.saveUserApiSettings(keys, settings, usage);
+          console.log("☁️ Đã tự động đồng bộ Token Usage lên Neon Cloud!");
+        } catch (e) {
+          console.warn("Auto cloud sync error:", e);
+        }
+      }
+    });
+
     // 1. Workspace Navigation Tabs
     const tabNovel = document.getElementById("tabNavNovelStudio");
     const tabTrans = document.getElementById("tabNavTranslator");

@@ -396,6 +396,102 @@ body {
   gap: 10px;
 }
 
+/* ==================== STEP 1: STORY TONE & MOOD SELECTOR ==================== */
+.tone-section-wrapper {
+  margin-bottom: 20px;
+  background: rgba(15, 23, 42, 0.4);
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tone-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.tone-card {
+  position: relative;
+  background: #14192b;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  padding: 14px 14px 12px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tone-card:hover {
+  background: #1c223a;
+  border-color: rgba(236, 72, 153, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.tone-card.active {
+  background: linear-gradient(145deg, rgba(236, 72, 153, 0.18) 0%, rgba(139, 92, 246, 0.15) 100%);
+  border-color: #ec4899;
+  box-shadow: 0 0 18px rgba(236, 72, 153, 0.3);
+}
+
+.tone-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tone-card-icon-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tone-card-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.tone-card-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.tone-card.active .tone-card-title {
+  color: #fff;
+}
+
+.tone-card-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+}
+
+.tone-card.active .tone-card-badge {
+  background: rgba(236, 72, 153, 0.3);
+  color: #fbcfe8;
+  border: 1px solid rgba(236, 72, 153, 0.4);
+}
+
+.tone-card-desc {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.tone-card.active .tone-card-desc {
+  color: #e2e8f0;
+}
+
 /* ==================== STEP 1: TROPE TAG CLOUD ==================== */
 .trope-cloud-container {
   display: flex;

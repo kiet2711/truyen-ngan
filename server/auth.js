@@ -597,15 +597,16 @@ async function getAdminStats() {
 async function getUserApiSettings(userId) {
   if (db.isPostgres && db.pool) {
     const res = await db.pool.query(
-      'SELECT api_keys, settings FROM user_api_settings WHERE user_id = $1 LIMIT 1',
+      'SELECT api_keys, settings, api_usage FROM user_api_settings WHERE user_id = $1 LIMIT 1',
       [userId]
     );
     if (res.rows.length === 0) {
-      return { api_keys: [], settings: {} };
+      return { api_keys: [], settings: {}, api_usage: {} };
     }
     return {
       api_keys: res.rows[0].api_keys || [],
-      settings: res.rows[0].settings || {}
+      settings: res.rows[0].settings || {},
+      api_usage: res.rows[0].api_usage || {}
     };
   } else {
     const data = db.getFallbackData();
@@ -613,25 +614,27 @@ async function getUserApiSettings(userId) {
     const found = data.user_api_settings.find(s => s.user_id === userId);
     return {
       api_keys: found ? (found.api_keys || []) : [],
-      settings: found ? (found.settings || {}) : {}
+      settings: found ? (found.settings || {}) : {},
+      api_usage: found ? (found.api_usage || {}) : {}
     };
   }
 }
 
-async function saveUserApiSettings(userId, { api_keys, settings }) {
+async function saveUserApiSettings(userId, { api_keys, settings, api_usage }) {
   const cleanKeys = (Array.isArray(api_keys) ? api_keys : [])
     .map(k => (typeof k === 'string' ? k.trim() : ''))
     .filter(Boolean);
 
   const cleanSettings = typeof settings === 'object' && settings !== null ? settings : {};
+  const cleanUsage = typeof api_usage === 'object' && api_usage !== null ? api_usage : {};
 
   if (db.isPostgres && db.pool) {
     await db.pool.query(
-      `INSERT INTO user_api_settings (user_id, api_keys, settings, updated_at)
-       VALUES ($1, $2, $3, NOW())
+      `INSERT INTO user_api_settings (user_id, api_keys, settings, api_usage, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
        ON CONFLICT (user_id) 
-       DO UPDATE SET api_keys = $2, settings = $3, updated_at = NOW()`,
-      [userId, cleanKeys, JSON.stringify(cleanSettings)]
+       DO UPDATE SET api_keys = $2, settings = $3, api_usage = $4, updated_at = NOW()`,
+      [userId, cleanKeys, JSON.stringify(cleanSettings), JSON.stringify(cleanUsage)]
     );
   } else {
     const data = db.getFallbackData();
@@ -641,6 +644,7 @@ async function saveUserApiSettings(userId, { api_keys, settings }) {
       user_id: userId,
       api_keys: cleanKeys,
       settings: cleanSettings,
+      api_usage: cleanUsage,
       updated_at: new Date().toISOString()
     };
     if (idx >= 0) {
@@ -651,7 +655,7 @@ async function saveUserApiSettings(userId, { api_keys, settings }) {
     db.saveFallbackData(data);
   }
 
-  return { api_keys: cleanKeys, settings: cleanSettings };
+  return { api_keys: cleanKeys, settings: cleanSettings, api_usage: cleanUsage };
 }
 
 module.exports = {

@@ -5,24 +5,31 @@
  */
 
 import { storageService } from "./storageService.js";
+import { STORY_TONES } from "../data/tagPools.js";
 
 const BASE_API_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 
-const CHINESE_DRAMA_SYSTEM_BASE = `Bạn là bậc thầy biên kịch phim ngắn Trung Quốc (Short Drama / Đới kịch) và tiểu thuyết gia Zhihu hàng đầu.
+/**
+ * Trả về Prompt Nền tảng (System Prompt) dựa theo Tông Truyện người dùng lựa chọn
+ */
+export function getBaseSystemPrompt(toneId = "dramatic") {
+  const toneObj = STORY_TONES.find(t => t.id === toneId) || STORY_TONES[0];
+
+  return `Bạn là tác giả tiểu thuyết và biên kịch hàng đầu chuyên sáng tác các tác phẩm phong cách Trung Quốc.
 
 QUY TẮC CỐT LÕI (BẮT BUỘC TUÂN THỦ 100%):
-1. VĂN PHONG TRUNG QUỐC / PHIM NGẮN ZHIHU: 
-   - Nhịp điệu cực nhanh, mở đầu giật gân (hook mạnh), xung đột leo thang gay gắt.
-   - Yếu tố "Vả mặt" (打脸) cực mạnh, sảng khoái, hả dạ, dứt khoát không dây dưa mềm lòng.
-   - Lời thoại sắc bén, châm biếm thâm sâu, các pha gài bẫy và lật ngược tình thế (plot twist) chấn động.
+1. ĐỊNH HƯỚNG PHONG CÁCH & VĂN PHONG CHÍNH (${toneObj.name}):
+${toneObj.promptInstruction}
+
 2. QUY TẮC TÊN GỌI VÀ ĐỊA DANH (NGHIÊM CẤM VI PHẠM):
    - TUYỆT ĐỐI KHÔNG SỬ DỤNG TÊN HOẶC ĐỊA DANH VIỆT NAM (như Hùng, Nam, Linh, Hà Nội, Sài Gòn...).
-   - BẮT BUỘC SỬ DỤNG TÊN HỌ HÁN VIỆT TRUNG QUỐC sang trọng, đúng chất phim ngắn hào môn / cổ phong:
-     * Họ: Cố, Lục, Thẩm, Giang, Phó, Tần, Chu, Diệp, Tiêu, Tống, Ôn, Lâm, Bùi, Kỷ...
-     * Tên nhân vật ví dụ: Cố Bắc Thần, Thẩm Chiêu Chiêu, Lục Cẩn Niên, Giang Thính Vũ, Phó Kính Thần, Tần Hoan, Bạch Mộng Ly, Ôn Tri Hứa, Diệp Thương Lan, Khương Vãn...
-     * Địa danh / Tập đoàn ví dụ: Kinh Đô, Kinh Khuyên, Giang Thành, Lâm Hải, Thành phố S, Thành phố A, Tập đoàn Cố Thị, Lục gia, Thẩm thị, Thanh Vân Tông, Đế Đô...
-3. NGÔN TỪ PHIM NGẮN HIỆN ĐẠI:
-   - Dùng các thuật ngữ thịnh hành trong truyện/phim Trung Quốc: Thái tử gia, Hào môn, Trà xanh, Bạch liên hoa, Tra nam, Ăn dưa, Đại lão, Cá mặn, Kim chủ, Vả mặt, Xuyên thư, Thiên kim thật giả...`;
+   - BẮT BUỘC SỬ DỤNG TÊN HỌ HÁN VIỆT TRUNG QUỐC phù hợp với bối cảnh:
+     * Họ: Cố, Lục, Thẩm, Giang, Phó, Tần, Chu, Diệp, Tiêu, Tống, Ôn, Lâm, Bùi, Kỷ, Khương, Dư, Trình, Diễm...
+     * Tên nhân vật ví dụ: Cố Bắc Thần, Thẩm Chiêu Chiêu, Lục Cẩn Niên, Giang Thính Vũ, Ôn Tri Hứa, Diệp Thương Lan, Khương Vãn, Chu Tự Hằng, Tống Thanh Hòa, Tần Duật, Hứa Tri Ý...
+     * Địa danh / Bối cảnh ví dụ: Kinh Đô, Giang Thành, Lâm Hải, Trấn Thanh Hà, Huyện Bình An, Thành phố S, Thành phố A, Tập đoàn Cố Thị, Lục gia, Thôn Hạnh Hoa, Vân Đình Quán...
+3. NGÔN TỪ TRUYỆN:
+   - Sử dụng từ ngữ mượt mà, đúng chuẩn phong cách truyện/phim ngắn, giàu cảm xúc và hình ảnh, câu từ tự nhiên chuẩn mực tiếng Việt.`;
+}
 
 class GeminiService {
   constructor() {
@@ -117,27 +124,30 @@ class GeminiService {
   // ==================== GENERATE 3 STORY CONCEPTS ====================
 
   /**
-   * Sinh 3 bản đề xuất cốt truyện / bối cảnh / motif khác nhau để người dùng lựa chọn
+   * Sinh 3 bản đề xuất cốt truyện / bối cảnh / motif khác nhau theo Tông Truyện đã chọn
    */
   async generateStoryConcepts(params, onProgress = null) {
     const settings = storageService.getSettings();
     const model = settings.model || "gemini-3.6-flash";
+    const toneId = params.selectedTone || "dramatic";
+    const toneObj = STORY_TONES.find(t => t.id === toneId) || STORY_TONES[0];
+    const systemBase = getBaseSystemPrompt(toneId);
 
-    const systemPrompt = `${CHINESE_DRAMA_SYSTEM_BASE}
-Nhiệm vụ của bạn là dựa vào các TAG TROPE và Ý TƯỞNG của người dùng để sáng tạo ra ĐÚNG 3 BẢN ĐỀ XUẤT CỐT TRUYỆN (Concepts / Pitch Options) mang màu sắc phim ngắn / Zhihu Trung Quốc cực kỳ kịch tính và hấp dẫn.
+    const systemPrompt = `${systemBase}
+Nhiệm vụ của bạn là dựa vào TÔNG TRUYỆN (${toneObj.name}), các TAG TROPE và Ý TƯỞNG của người dùng để sáng tạo ra ĐÚNG 3 BẢN ĐỀ XUẤT CỐT TRUYỆN (Concepts / Pitch Options) mang màu sắc hấp dẫn, bám sát phong cách được chọn.
 
-Mỗi bản đề xuất phải có nét độc đáo riêng, motif xung đột căng thẳng và cú lật mặt (twist) thỏa mãn.
+Mỗi bản đề xuất phải có nét độc đáo riêng, xây dựng tuyến nhân vật và cốt truyện phù hợp với tông "${toneObj.name}".
 BẮT BUỘC trả về JSON thuần túy theo cấu trúc:
 {
   "concepts": [
     {
       "id": 1,
-      "title": "Tựa đề giật gân phong cách phim ngắn Trung Quốc",
-      "hook": "Câu mở đầu giật gân xé tan vỏ bọc, gây sốc ngay lập tức (1-2 câu)",
-      "settingAndCharacters": "Bối cảnh hào môn/đô thị/cổ phong và tên nhân vật chính Hán Việt chuẩn (VD: Cố gia Kinh Đô, Thẩm Chiêu Chiêu - Cố Hoài An)",
-      "motifAndConflict": "Motif cốt lõi và mâu thuẫn đối đầu chính",
-      "plotSummary": "Tóm tắt mạch kịch tính 3-4 câu: Bị hãm hại/khinh thường ➔ Ẩn nhẫn thu thập bằng chứng ➔ Vả mặt công khai trước toàn thể giới thượng lưu",
-      "climaxTwist": "Cú twist vả mặt sảng khoái đỉnh cao"
+      "title": "Tựa đề truyện cuốn hút, hợp thể loại",
+      "hook": "Câu mở đầu / tình huống mở màn thu hút người đọc ngay lập tức (1-2 câu)",
+      "settingAndCharacters": "Bối cảnh và tên nhân vật chính Hán Việt chuẩn (VD: Cố gia Kinh Đô, Thẩm Chiêu Chiêu - Cố Hoài An)",
+      "motifAndConflict": "Motif cốt lõi và định hướng phát triển mâu thuẫn/tình cảm",
+      "plotSummary": "Tóm tắt mạch diễn biến 3-4 câu phù hợp phong cách đã chọn",
+      "climaxTwist": "Điểm cao trào / nút thắt cảm xúc / khoảnh khắc đáng nhớ nhất của truyện"
     },
     {
       "id": 2,
@@ -160,9 +170,10 @@ BẮT BUỘC trả về JSON thuần túy theo cấu trúc:
   ]
 }`;
 
-    const userPrompt = `Hãy tạo 3 bản đề xuất cốt truyện phim ngắn / Zhihu Trung Quốc từ các yêu cầu sau:
+    const userPrompt = `Hãy tạo 3 bản đề xuất cốt truyện theo Tông Truyện "${toneObj.name}" từ các yêu cầu sau:
+- Tông truyện chính: ${toneObj.name} (${toneObj.desc})
 - Các Trope đã chọn: ${(params.selectedTags || []).join(", ")}
-${params.userPremise ? `- Ý tưởng / Tình huống người dùng tự viết: "${params.userPremise}"` : "- Ý tưởng: Người dùng không nhập, hãy tự do sáng tạo tổ hợp kịch tính nhất."}
+${params.userPremise ? `- Ý tưởng / Tình huống người dùng tự viết: "${params.userPremise}"` : "- Ý tưởng: Người dùng không nhập, hãy tự do sáng tạo tổ hợp hấp dẫn nhất theo đúng tông truyện đã chọn."}
 - Số lượng chương dự kiến: ${params.chapterCount || 6} chương.
 
 Nhắc lại: Tuyệt đối không dùng tên hay địa điểm Việt Nam. Sử dụng tên Hán Việt Trung Quốc chuẩn.`;
@@ -171,7 +182,7 @@ Nhắc lại: Tuyệt đối không dùng tên hay địa điểm Việt Nam. S�
       const apiKey = this.getActiveKey();
       const url = `${BASE_API_URL}/${model}:generateContent?key=${apiKey}`;
 
-      if (onProgress) onProgress("AI đang sáng tạo 3 bản đề xuất cốt truyện...");
+      if (onProgress) onProgress(`AI đang sáng tạo 3 bản đề xuất cốt truyện (${toneObj.name})...`);
 
       const response = await fetch(url, {
         method: "POST",
@@ -217,44 +228,48 @@ Nhắc lại: Tuyệt đối không dùng tên hay địa điểm Việt Nam. S�
   async generateOutlineFromConcept(params, onProgress = null) {
     const settings = storageService.getSettings();
     const model = settings.model || "gemini-3.6-flash";
+    const toneId = params.selectedTone || "dramatic";
+    const toneObj = STORY_TONES.find(t => t.id === toneId) || STORY_TONES[0];
+    const systemBase = getBaseSystemPrompt(toneId);
 
-    const systemPrompt = `${CHINESE_DRAMA_SYSTEM_BASE}
-Nhiệm vụ của bạn là mở rộng BẢN CONCEPT CỐT TRUYỆN ĐÃ CHỌN thành DÀN Ý CHI TIẾT (Outline) gồm ${params.chapterCount || 6} chương và BẢNG NHÂN VẬT (Story Bible) sống động.
+    const systemPrompt = `${systemBase}
+Nhiệm vụ của bạn là mở rộng BẢN CONCEPT CỐT TRUYỆN ĐÃ CHỌN thành DÀN Ý CHI TIẾT (Outline) gồm ${params.chapterCount || 6} chương và BẢNG NHÂN VẬT (Story Bible) sống động theo đúng phong cách "${toneObj.name}".
 
-QUY TẮC CẤU TRÚC PHIM NGẮN:
-1. Mỗi chương như một tập phim ngắn cao trào: Mở đầu bằng xung đột, giữa chương leo thang đấu trí/gài bẫy, cuối chương là móc câu kịch tính (cliffhanger) hoặc màn vả mặt cực đã.
-2. Bảng nhân vật đầy đủ: Tên Hán Việt Trung Quốc, thân phận thật vs thân phận ngụy trang, tính cách, đặc điểm nhận dạng.
+QUY TẮC CẤU TRÚC:
+1. Mỗi chương có diễn biến rõ ràng, mở đầu hấp dẫn, giữa chương phát triển cảm xúc/mâu thuẫn, cuối chương có điểm kết cuốn hút để dẫn sang chương kế tiếp.
+2. Bảng nhân vật đầy đủ: Tên Hán Việt Trung Quốc, vai trò, tính cách, đặc điểm nhận dạng.
 3. BẮT BUỘC trả về JSON thuần túy:
 {
-  "title": "Tên truyện giật gân chuẩn phim ngắn",
-  "logline": "1-2 câu tóm tắt kịch tính chủ đề",
-  "settingDescription": "Bối cảnh cụ thể (Địa danh Trung Quốc, Tập đoàn, Giới hào môn/Kinh khuyên)",
+  "title": "Tên truyện cuốn hút",
+  "logline": "1-2 câu tóm tắt chủ đề",
+  "settingDescription": "Bối cảnh cụ thể (Địa danh Trung Quốc, Tập đoàn, Phố thị hoặc Thôn làng)",
   "characterBible": [
     {
       "name": "Tên nhân vật Hán Việt (VD: Cố Hoài An)",
-      "role": "Thân phận công khai & Thân phận ngầm",
-      "personality": "Tính cách (Sắc sảo, tàn nhẫn với kẻ thù, bảo vệ người nhà...)",
+      "role": "Thân phận và vai trò trong truyện",
+      "personality": "Tính cách",
       "traits": "Đặc điểm ngoại hình, khẩu khí hoặc thói quen"
     }
   ],
   "chapters": [
     {
       "index": 1,
-      "title": "Tên chương giật gân",
-      "summary": "Tóm tắt diễn biến kịch tính 3-4 câu chuẩn nhịp phim ngắn",
-      "dramaticGoal": "Màn vả mặt hoặc điểm nút thắt cần đạt",
+      "title": "Tên chương",
+      "summary": "Tóm tắt diễn biến chương 3-4 câu",
+      "dramaticGoal": "Mục tiêu cảm xúc / Điểm nhấn của chương",
       "appearingCharacters": ["Tên các nhân vật xuất hiện"]
     }
   ]
 }`;
 
     const userPrompt = `Dưới đây là Bản Concept cốt truyện được chọn:
+- Tông truyện: ${toneObj.name}
 - Tựa đề: ${params.chosenConcept.title}
 - Hook: ${params.chosenConcept.hook}
 - Bối cảnh & Nhân vật: ${params.chosenConcept.settingAndCharacters}
 - Motif & Xung đột: ${params.chosenConcept.motifAndConflict}
 - Tóm tắt diễn biến: ${params.chosenConcept.plotSummary}
-- Cú twist đỉnh cao: ${params.chosenConcept.climaxTwist}
+- Điểm nhấn cao trào: ${params.chosenConcept.climaxTwist}
 - Các Trope chính: ${(params.selectedTags || []).join(", ")}
 - Số chương: ${params.chapterCount || 6} chương
 
@@ -297,7 +312,7 @@ Hãy xuất dữ liệu JSON Dàn ý chi tiết và Bảng nhân vật ngay bây
   // ==================== STREAM GENERATE CHAPTER ====================
 
   /**
-   * Sinh từng chương chi tiết phong cách phim ngắn Trung Quốc (Stream Realtime)
+   * Sinh từng chương chi tiết bám sát Tông Truyện đã chọn (Stream Realtime)
    */
   async generateChapterStream({
     story,
@@ -308,10 +323,13 @@ Hãy xuất dữ liệu JSON Dàn ý chi tiết và Bảng nhân vật ngay bây
     const settings = storageService.getSettings();
     const model = settings.model || "gemini-3.6-flash";
     const currentChapter = story.chapters[chapterIndex];
+    const toneId = story.params?.selectedTone || "dramatic";
+    const toneObj = STORY_TONES.find(t => t.id === toneId) || STORY_TONES[0];
+    const systemBase = getBaseSystemPrompt(toneId);
 
     const pastSummaries = story.chapters
       .slice(0, chapterIndex)
-      .map(c => `Chương ${c.index}: ${c.title}\n- Kịch bản: ${c.summary}\n- Đoạn kết đã viết: ${c.content ? c.content.slice(-300).replace(/\n+/g, " ") : "(Chưa có)"}`)
+      .map(c => `Chương ${c.index}: ${c.title}\n- Tóm tắt: ${c.summary}\n- Đoạn kết đã viết: ${c.content ? c.content.slice(-300).replace(/\n+/g, " ") : "(Chưa có)"}`)
       .join("\n\n");
 
     let lastParagraphHook = "";
@@ -320,18 +338,19 @@ Hãy xuất dữ liệu JSON Dàn ý chi tiết và Bảng nhân vật ngay bây
       lastParagraphHook = prevContent.slice(-400);
     }
 
-    const systemPrompt = `${CHINESE_DRAMA_SYSTEM_BASE}
-Bạn đang viết CHƯƠNG ${currentChapter.index}: "${currentChapter.title}" cho bộ truyện ngắn phim ngắn "${story.title}".
+    const systemPrompt = `${systemBase}
+Bạn đang viết CHƯƠNG ${currentChapter.index}: "${currentChapter.title}" cho bộ truyện "${story.title}".
 
-TIÊU CHUẨN VĂN PHONG VÀ KỊCH BẢN:
-1. ĐỘ DÀI MỤC TIÊU: Viết chi tiết, đầy đặn, giàu kịch tính, đạt độ dài từ 1.500 đến 2.500 TỪ TIẾNG VIỆT cho chương này.
-2. VĂN PHONG PHIM NGẮN TRUNG QUỐC: Đối thoại sắc bén, đanh thép, nhân vật chính thông minh quyết đoán, không yếu đuối nhu nhược. Tình tiết vả mặt phản diện rõ ràng, dứt khoát, đem lại cảm giác cực kỳ sảng khoái.
+TIÊU CHUẨN VĂN PHONG VÀ NỘI DUNG:
+1. ĐỘ DÀI MỤC TIÊU: Viết chi tiết, đầy đặn, đạt độ dài từ 1.500 đến 2.500 TỪ TIẾNG VIỆT cho chương này.
+2. PHONG CÁCH NỘI DUNG (${toneObj.name}): ${toneObj.desc}. Văn phong cuốn hút, miêu tả cảm xúc và đối thoại sống động, tự nhiên, bám sát đúng tông truyện đã định hình.
 3. TUYỆT ĐỐI KHÔNG DÙNG TÊN HAY ĐỊA DANH VIỆT NAM. Giữ đúng tên họ Hán Việt trong Bảng Nhân Vật (Story Bible).
-4. TÍNH LIÊN TỤC: Nối liền mạch với đoạn cuối của chương trước, duy trì bối cảnh và bí mật của từng nhân vật.
+4. TÍNH LIÊN TỤC: Nối liền mạch với đoạn cuối của chương trước, duy trì bối cảnh và tính cách của từng nhân vật.
 5. CHỈ TRẢ VỀ NỘI DUNG VĂN XUÔI CỦA CHƯƠNG. Không thêm lời mở đầu hay kết thúc ngoài lề.`;
 
     const userPrompt = `### THÔNG TIN BỘ TRUYỆN:
 - Tên truyện: ${story.title}
+- Tông truyện: ${toneObj.name}
 - Logline: ${story.logline || ""}
 - Bối cảnh: ${story.settingDescription || ""}
 - Các Trope: ${(story.params?.selectedTags || []).join(", ")}
@@ -347,9 +366,9 @@ ${lastParagraphHook ? `### ĐOẠN CUỐI CHƯƠNG TRƯỚC (HÃY NỐI TIẾP M
 
 ### YÊU CẦU CHO CHƯƠNG ${currentChapter.index}: "${currentChapter.title}":
 - Diễn biến chính: ${currentChapter.summary}
-- Điểm nút kịch tính / Vả mặt: ${currentChapter.dramaticGoal}
+- Điểm nhấn / Mục tiêu chương: ${currentChapter.dramaticGoal}
 - Nhân vật xuất hiện: ${(currentChapter.appearingCharacters || []).join(", ")}
-- Mục tiêu độ dài: ~${story.params?.targetWordsPerChapter || 2000} từ tiếng Việt sắc sảo.
+- Mục tiêu độ dài: ~${story.params?.targetWordsPerChapter || 2000} từ tiếng Việt chất lượng.
 
 Hãy bắt đầu viết nội dung Chương ${currentChapter.index} ngay bây giờ:`;
 

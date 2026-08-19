@@ -263,9 +263,64 @@ class StorageService {
       window.dispatchEvent(new CustomEvent("novel_studio_api_usage_updated", {
         detail: { key, model: modelKey, modelStats, usageMetadata }
       }));
+
+      // Kích hoạt đồng bộ nhẹ nhàng lên Neon Cloud (Debounce 3 giây)
+      if (this._usageSyncTimeout) clearTimeout(this._usageSyncTimeout);
+      this._usageSyncTimeout = setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("novel_studio_request_cloud_sync", { detail: {} }));
+      }, 3000);
     }
 
     return modelStats;
+  }
+
+  /**
+   * Hợp nhất dữ liệu token usage từ Neon Cloud vào LocalStorage
+   */
+  mergeApiUsageData(cloudData) {
+    if (!cloudData || typeof cloudData !== "object") return;
+    const local = this.getRawApiUsageData();
+    const currentDateStr = this.getGoogleUtc8DateString();
+
+    Object.keys(cloudData).forEach(key => {
+      const cloudKeyData = cloudData[key];
+      if (!cloudKeyData || typeof cloudKeyData !== "object") return;
+
+      if (!local[key]) {
+        local[key] = cloudKeyData;
+        return;
+      }
+
+      if (!local[key].models) local[key].models = {};
+      const cloudModels = cloudKeyData.models || {};
+
+      Object.keys(cloudModels).forEach(modelKey => {
+        const cm = cloudModels[modelKey];
+        if (!cm) return;
+
+        if (!local[key].models[modelKey]) {
+          local[key].models[modelKey] = cm;
+        } else {
+          const lm = local[key].models[modelKey];
+          lm.totalRequests = Math.max(lm.totalRequests || 0, cm.totalRequests || 0);
+          lm.promptTokens = Math.max(lm.promptTokens || 0, cm.promptTokens || 0);
+          lm.candidatesTokens = Math.max(lm.candidatesTokens || 0, cm.candidatesTokens || 0);
+          lm.totalTokens = Math.max(lm.totalTokens || 0, cm.totalTokens || 0);
+          if (cloudKeyData.lastResetDate === currentDateStr && local[key].lastResetDate === currentDateStr) {
+            lm.requestsToday = Math.max(lm.requestsToday || 0, cm.requestsToday || 0);
+          }
+          if (cm.lastUsedAt && (!lm.lastUsedAt || cm.lastUsedAt > lm.lastUsedAt)) {
+            lm.lastUsedAt = cm.lastUsedAt;
+          }
+        }
+      });
+    });
+
+    this.saveRawApiUsageData(local);
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("novel_studio_api_usage_updated", { detail: {} }));
+    }
   }
 
   /**

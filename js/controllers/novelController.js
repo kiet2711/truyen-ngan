@@ -6,7 +6,7 @@
  * Step 4: Đọc truyện, Làm sạch Audio & Xuất bản (TXT, MD, HTML, DOCX, EPUB)
  */
 
-import { TROPE_CATEGORIES, ALL_TROPES, getRandomTropes, getRandomSamplePremise } from "../data/tagPools.js";
+import { STORY_TONES, TROPE_CATEGORIES, ALL_TROPES, getRandomTropes, getRandomSamplePremise } from "../data/tagPools.js";
 import { normalizeTextForAudio } from "../data/numberToWordsVi.js";
 import { geminiService } from "../services/geminiService.js";
 import { storageService } from "../services/storageService.js";
@@ -17,6 +17,7 @@ export class NovelController {
     this.app = app;
     this.currentStep = 1;
     this.customTags = storageService.getCustomTags();
+    this.selectedTone = "dramatic";
     this.selectedTags = new Set(["Zhihu style", "Vả mặt cực mạnh", "Plot twist bất ngờ", "Báo thù"]);
     this.generatedConcepts = [];
     this.selectedConcept = null;
@@ -30,7 +31,52 @@ export class NovelController {
 
   init() {
     this.bindEvents();
+    this.renderToneSelector();
     this.renderTropeCloud();
+  }
+
+  // ==================== STEP 1: STORY TONE SELECTOR ====================
+
+  renderToneSelector() {
+    const container = document.getElementById("toneGridContainer");
+    const badge = document.getElementById("selectedToneBadge");
+    if (!container) return;
+    container.innerHTML = "";
+
+    STORY_TONES.forEach(tone => {
+      const card = document.createElement("div");
+      const isActive = this.selectedTone === tone.id;
+      card.className = `tone-card ${isActive ? 'active' : ''}`;
+      card.id = `toneCard_${tone.id}`;
+
+      card.innerHTML = `
+        <div class="tone-card-header">
+          <div class="tone-card-icon-title">
+            <span class="tone-card-icon">${tone.icon}</span>
+            <span class="tone-card-title">${tone.name}</span>
+          </div>
+          <span class="tone-card-badge">${tone.badge}</span>
+        </div>
+        <div class="tone-card-desc">${tone.desc}</div>
+      `;
+
+      card.addEventListener("click", () => {
+        this.selectedTone = tone.id;
+        document.querySelectorAll(".tone-card").forEach(c => c.classList.remove("active"));
+        card.classList.add("active");
+        if (badge) {
+          badge.textContent = `${tone.icon} ${tone.name}`;
+        }
+      });
+
+      container.appendChild(card);
+    });
+
+    // Update badge initially
+    const currentObj = STORY_TONES.find(t => t.id === this.selectedTone) || STORY_TONES[0];
+    if (badge && currentObj) {
+      badge.textContent = `${currentObj.icon} ${currentObj.name}`;
+    }
   }
 
   // ==================== STEP NAVIGATION ====================
@@ -258,8 +304,10 @@ export class NovelController {
     const chapterCount = parseInt(document.getElementById("chapterCountSelect")?.value, 10) || 6;
     const wordsPerChapter = parseInt(document.getElementById("wordsPerChapterSelect")?.value, 10) || 2000;
     const targetWords = chapterCount * wordsPerChapter;
+    const toneObj = STORY_TONES.find(t => t.id === this.selectedTone) || STORY_TONES[0];
 
     const params = {
+      selectedTone: this.selectedTone,
       selectedTags: Array.from(this.selectedTags),
       userPremise,
       chapterCount,
@@ -273,14 +321,14 @@ export class NovelController {
 
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = `<span class="typing-cursor"></span> AI đang lên 3 kịch bản Zhihu...`;
+      btn.innerHTML = `<span class="typing-cursor"></span> AI đang tạo 3 kịch bản (${toneObj.name})...`;
     }
     if (section) section.style.display = "block";
     if (container) {
       container.innerHTML = `
         <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--accent-pink);">
           <div style="font-size: 28px; margin-bottom: 12px; animation: spin 2s linear infinite;">🪄</div>
-          <div style="font-weight: 600; font-size: 15px;">Đang kiến tạo 3 motif vả mặt đỉnh cao từ kho dữ liệu Zhihu...</div>
+          <div style="font-weight: 600; font-size: 15px;">Đang kiến tạo 3 bản đề xuất theo phong cách ${toneObj.name}...</div>
           <div style="font-size: 12px; color: var(--text-dim); margin-top: 6px;">Áp dụng ${params.selectedTags.length} thẻ trope được chọn</div>
         </div>
       `;
@@ -442,7 +490,7 @@ export class NovelController {
       id: `story_${Date.now()}`,
       title: concept.title,
       concept: concept,
-      params: { ...(params || {}), chapterCount, wordsPerChapter, targetWords },
+      params: { ...(params || {}), selectedTone: this.selectedTone, chapterCount, wordsPerChapter, targetWords },
       outline: null,
       characterBible: [],
       chapters: [],

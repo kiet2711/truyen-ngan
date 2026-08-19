@@ -146,6 +146,15 @@ function buildCommonQuery(device, babiParam = null, includeRegion = true) {
   return q;
 }
 
+function canonicalQuery(urlStr) {
+  const parsed = new URL(urlStr);
+  const pairs = [];
+  parsed.searchParams.forEach((val, key) => pairs.push([key, val]));
+  // Strict ASCII sorting for AWS SigV4 specification
+  pairs.sort((a, b) => (a[0] < b[0] ? -1 : (a[0] > b[0] ? 1 : 0)));
+  return pairs.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+}
+
 function aws4Authorization(method, urlStr, bodyBuf, accessKeyId, secretAccessKey, sessionToken, amzDate) {
   const dateStamp = amzDate.slice(0, 8);
   const scope = `${dateStamp}/${VOD_REGION}/${VOD_SERVICE}/aws4_request`;
@@ -153,13 +162,10 @@ function aws4Authorization(method, urlStr, bodyBuf, accessKeyId, secretAccessKey
   const canonicalHeaders = `x-amz-date:${amzDate}\nx-amz-security-token:${sessionToken}\n`;
 
   const parsed = new URL(urlStr);
-  const queryPairs = [];
-  parsed.searchParams.forEach((val, key) => queryPairs.push([key, val]));
-  queryPairs.sort((a, b) => a[0].localeCompare(b[0]));
-  const canonicalQuery = queryPairs.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+  const q = canonicalQuery(urlStr);
 
   const payloadHash = sha256Hex(bodyBuf);
-  const canonicalRequest = [method, parsed.pathname, canonicalQuery, canonicalHeaders, signedHeaders, payloadHash].join('\n');
+  const canonicalRequest = [method, parsed.pathname, q, canonicalHeaders, signedHeaders, payloadHash].join('\n');
   const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256Hex(canonicalRequest)].join('\n');
 
   const signingKey = aws4SigningKey(secretAccessKey, dateStamp);

@@ -53,6 +53,17 @@
         <div id="apiKeyStatusBadge" class="badge badge-purple" style="cursor: pointer;" title="Nhấp để cấu hình API Key">
           🔑 <span id="keyStatusText">Chưa có API Key</span>
         </div>
+
+        <!-- Live API Quota & Token Badge -->
+        <div id="apiQuotaLiveBadge" class="api-quota-live-pill" style="cursor: pointer;" title="Nhấp để xem chi tiết hạn mức RPM, RPD & Token">
+          <span class="quota-pulse-dot"></span>
+          <span class="quota-text-rpm" id="liveRpmText">0/15 RPM</span>
+          <span class="quota-divider">|</span>
+          <span class="quota-text-rpd" id="liveRpdText">0/500 RPD</span>
+          <span class="quota-divider">|</span>
+          <span class="quota-text-tokens" id="liveTokensText">0 Tok</span>
+        </div>
+
         <button id="btnOpenLibrary" class="btn btn-secondary btn-sm">
           📚 Thư Viện (<span id="savedStoryCount">0</span>)
         </button>
@@ -510,12 +521,123 @@
 
   <!-- ==================== MODAL: API SETTINGS ==================== -->
   <div class="modal-backdrop" id="apiSettingsModal">
-    <div class="modal-window">
+    <div class="modal-window" style="max-width: 620px;">
       <div class="modal-header">
-        <div class="modal-title">⚙️ Cài Đặt Gemini API (Free Tier)</div>
+        <div class="modal-title">⚙️ Cài Đặt Gemini API & Hạn Mức</div>
         <button class="modal-close" id="btnCloseApiSettings">&times;</button>
       </div>
       <div style="display: flex; flex-direction: column; gap: 16px;">
+        
+        <!-- ==================== REAL-TIME QUOTA & TOKEN TRACKER (PER-MODEL) ==================== -->
+        <div class="quota-tracker-box">
+          <div class="quota-tracker-header">
+            <div class="quota-tracker-title">
+              <span>📊</span>
+              <span>Hạn Mức Theo Model Đang Chọn:</span>
+              <span id="modalActiveModelBadge" class="badge badge-emerald" style="font-size: 11px; text-transform: none;">gemini-3.6-flash</span>
+            </div>
+            <div class="quota-reset-timer" id="quotaResetCountdown" title="Google Cloud Quota tự động reset lúc 00:00 UTC-8 (khoảng 14h-15h VN hàng ngày)">
+              🕒 Reset ngày sau: <strong>--h --m</strong>
+            </div>
+          </div>
+
+          <!-- Active Model Progress Bars -->
+          <div class="quota-progress-grid">
+            <div class="quota-card">
+              <div class="quota-card-label">
+                <span>⚡ Tốc Độ (RPM - Phút)</span>
+                <span id="modalRpmLabel">0 / 5 RPM</span>
+              </div>
+              <div class="quota-progress-track">
+                <div class="quota-progress-bar rpm-bar" id="modalRpmBar" style="width: 0%;"></div>
+              </div>
+              <div class="quota-subtext">Hạn mức riêng cho model đang chọn (trong 60s)</div>
+            </div>
+
+            <div class="quota-card">
+              <div class="quota-card-label">
+                <span>📅 Hạn Mức Ngày (RPD)</span>
+                <span id="modalRpdLabel">0 / 20 RPD</span>
+              </div>
+              <div class="quota-progress-track">
+                <div class="quota-progress-bar rpd-bar" id="modalRpdBar" style="width: 0%;"></div>
+              </div>
+              <div class="quota-subtext">Hạn mức riêng cho model đang chọn (từ 00:00 UTC-8)</div>
+            </div>
+          </div>
+
+          <!-- Token Stats Summary -->
+          <div class="quota-token-summary-row">
+            <div class="token-stat-pill">
+              <span class="token-icon">📥</span>
+              <span class="token-name">Prompt:</span>
+              <strong id="modalPromptTokens">0</strong>
+            </div>
+            <div class="token-stat-pill">
+              <span class="token-icon">📤</span>
+              <span class="token-name">Candidate:</span>
+              <strong id="modalCandidatesTokens">0</strong>
+            </div>
+            <div class="token-stat-pill highlight">
+              <span class="token-icon">✨</span>
+              <span class="token-name">Token Model:</span>
+              <strong id="modalTotalTokens">0</strong>
+            </div>
+            <button type="button" id="btnClearApiStats" class="btn btn-secondary btn-xs" style="margin-left: auto;" title="Làm mới lại bộ đếm token và request">
+              🔄 Reset Thống Kê
+            </button>
+          </div>
+
+          <!-- ALL MODELS QUOTA DASHBOARD TABLE -->
+          <div style="margin-top: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">
+                🤖 Bảng hạn mức độc lập từng Model AI (Google AI Studio):
+              </span>
+              <span style="font-size: 10px; color: var(--text-dim);">Hạn mức mỗi model là độc lập</span>
+            </div>
+            <div class="quota-keys-table-container">
+              <table class="quota-keys-table">
+                <thead>
+                  <tr>
+                    <th>Model AI</th>
+                    <th>RPM (Phút)</th>
+                    <th>RPD (Ngày)</th>
+                    <th>TPM (Trần Token)</th>
+                    <th>Trạng thái</th>
+                  </tr>
+                </thead>
+                <tbody id="modalAllModelsTableBody">
+                  <!-- Rendered via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Per-Key Table (if multiple keys configured) -->
+          <div id="modalPerKeyContainer" style="display: none; margin-top: 6px;">
+            <div style="font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">
+              🔑 Chi tiết từng API Key đang xoay tua (Model hiện tại):
+            </div>
+            <div class="quota-keys-table-container">
+              <table class="quota-keys-table">
+                <thead>
+                  <tr>
+                    <th>Key</th>
+                    <th>RPM (1m)</th>
+                    <th>RPD (Ngày)</th>
+                    <th>Tokens</th>
+                    <th>Lần dùng cuối</th>
+                  </tr>
+                </thead>
+                <tbody id="modalPerKeyTableBody">
+                  <!-- Rendered via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <div>
           <label class="param-label">🔑 Gemini API Keys (Hỗ trợ nhập nhiều Key - mỗi dòng 1 key):</label>
           <textarea id="apiKeysInput" class="param-textarea" rows="4" placeholder="AIzaSy... (Dán API Key từ Google AI Studio tại aistudio.google.com)&#10;Có thể dán nhiều key để tự động xoay tua khi chạm hạn mức 15 RPM"></textarea>
@@ -529,15 +651,16 @@
         <div>
           <label class="param-label">🤖 Chọn Model Gemini:</label>
           <select id="modelSelect" class="param-select">
-            <option value="gemini-3.6-flash" selected>gemini-3.6-flash (Khuyên dùng - Cực sắc sảo cho phim ngắn / Zhihu, 5 RPM / 20 RPD)</option>
-            <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Hạn mức cao: 15 RPM / 500 lượt/ngày - Siêu nhanh & bền bỉ)</option>
-            <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (Hạn mức cao: 15 RPM / 500 lượt/ngày)</option>
-            <option value="gemini-3.7-flash">gemini-3.7-flash (Thế hệ mới nhất 3.7, 5 RPM / 20 RPD)</option>
-            <option value="gemini-3.5-flash">gemini-3.5-flash (5 RPM / 20 RPD)</option>
-            <option value="gemini-3-flash">gemini-3-flash (5 RPM / 20 RPD)</option>
-            <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (10 RPM / 20 RPD)</option>
-            <option value="gemini-2.0-flash">gemini-2.0-flash (Tốc độ cao)</option>
-            <option value="gemini-1.5-flash">gemini-1.5-flash (Ổn định 15 RPM)</option>
+            <option value="gemini-3.6-flash" selected>gemini-3.6-flash (Khuyên dùng - Chuẩn phim ngắn / Zhihu, 5 RPM / 20 RPD / 250k TPM)</option>
+            <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Hạn mức cao: 15 RPM / 500 RPD / 250k TPM - Siêu nhanh & bền bỉ)</option>
+            <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (Hạn mức cao: 15 RPM / 500 RPD / 250k TPM)</option>
+            <option value="gemini-3.7-flash">gemini-3.7-flash (Thế hệ mới nhất 3.7, 5 RPM / 20 RPD / 250k TPM)</option>
+            <option value="gemini-3.5-flash">gemini-3.5-flash (5 RPM / 20 RPD / 250k TPM)</option>
+            <option value="gemini-3-flash">gemini-3-flash (5 RPM / 20 RPD / 250k TPM)</option>
+            <option value="gemini-2.5-flash">gemini-2.5-flash (5 RPM / 20 RPD / 250k TPM)</option>
+            <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (10 RPM / 20 RPD / 250k TPM)</option>
+            <option value="gemini-2.0-flash">gemini-2.0-flash (Tốc độ cao 10 RPM / 1500 RPD)</option>
+            <option value="gemini-1.5-flash">gemini-1.5-flash (Ổn định 15 RPM / 1500 RPD)</option>
           </select>
         </div>
 

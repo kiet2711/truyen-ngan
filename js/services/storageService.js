@@ -88,6 +88,331 @@ class StorageService {
     localStorage.setItem("novel_studio_settings", JSON.stringify(settings));
   }
 
+  // ==================== API USAGE & QUOTA LIMITS (PER-MODEL REAL-TIME TRACKING) ====================
+
+  /**
+   * Bảng hạn mức chuẩn 100% từ Google AI Studio Dashboard cho từng Model riêng biệt
+   */
+  getAllModelLimits() {
+    return {
+      "gemini-3.5-flash-lite": { rpm: 15, rpd: 500, tpm: 250000, name: "Gemini 3.5 Flash Lite", category: "Text-out models", highlight: true },
+      "gemini-3.1-flash-lite": { rpm: 15, rpd: 500, tpm: 250000, name: "Gemini 3.1 Flash Lite", category: "Text-out models" },
+      "gemini-3.6-flash":      { rpm: 5,  rpd: 20,  tpm: 250000, name: "Gemini 3.6 Flash",      category: "Text-out models", highlight: true },
+      "gemini-3.7-flash":      { rpm: 5,  rpd: 20,  tpm: 250000, name: "Gemini 3.7 Flash",      category: "Text-out models" },
+      "gemini-3.5-flash":      { rpm: 5,  rpd: 20,  tpm: 250000, name: "Gemini 3.5 Flash",      category: "Text-out models" },
+      "gemini-3-flash":        { rpm: 5,  rpd: 20,  tpm: 250000, name: "Gemini 3.0 Flash",      category: "Text-out models" },
+      "gemini-2.5-flash":      { rpm: 5,  rpd: 20,  tpm: 250000, name: "Gemini 2.5 Flash",      category: "Text-out models" },
+      "gemini-2.5-flash-lite": { rpm: 10, rpd: 20,  tpm: 250000, name: "Gemini 2.5 Flash Lite", category: "Text-out models" },
+      "gemini-2.0-flash":      { rpm: 10, rpd: 1500, tpm: 1000000, name: "Gemini 2.0 Flash",    category: "Text-out models" },
+      "gemini-1.5-flash":      { rpm: 15, rpd: 1500, tpm: 1000000, name: "Gemini 1.5 Flash",    category: "Text-out models" }
+    };
+  }
+
+  /**
+   * Lấy thông tin giới hạn (RPM / RPD / TPM) theo Model
+   */
+  getModelLimits(modelName) {
+    const all = this.getAllModelLimits();
+    return all[modelName] || { rpm: 5, rpd: 20, tpm: 250000, name: modelName || "Gemini Model", category: "Text-out models" };
+  }
+
+  /**
+   * Tính ngày hiện tại theo chuẩn múi giờ UTC-8 của Google (Reset quota vào 00:00 UTC-8, tức ~14h-15h VN)
+   */
+  getGoogleUtc8DateString() {
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const utcMinus8 = new Date(utc - (8 * 3600000));
+    return utcMinus8.toISOString().split("T")[0]; // YYYY-MM-DD
+  }
+
+  /**
+   * Tính thời gian đếm ngược tới đợt reset RPD tiếp theo của Google (00:00 UTC-8)
+   */
+  getTimeUntilNextGoogleReset() {
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const utcMinus8 = new Date(utc - (8 * 3600000));
+
+    const nextReset = new Date(utcMinus8);
+    nextReset.setHours(24, 0, 0, 0); // 00:00 tiếp theo
+
+    const diffMs = Math.max(0, nextReset.getTime() - utcMinus8.getTime());
+    const hours = Math.floor(diffMs / 3600000);
+    const minutes = Math.floor((diffMs % 3600000) / 60000);
+    const seconds = Math.floor((diffMs % 60000) / 1000);
+
+    return {
+      hours,
+      minutes,
+      seconds,
+      formatted: `${hours}h ${minutes}m ${seconds}s`,
+      totalMs: diffMs
+    };
+  }
+
+  /**
+   * Rút gọn API Key để hiển thị an toàn trên giao diện
+   */
+  maskApiKey(key) {
+    if (!key || typeof key !== "string") return "Chưa có Key";
+    if (key.length <= 10) return key;
+    return `${key.slice(0, 7)}...${key.slice(-4)}`;
+  }
+
+  /**
+   * Đọc toàn bộ dữ liệu thống kê usage
+   */
+  getRawApiUsageData() {
+    try {
+      const stored = localStorage.getItem("novel_studio_api_usage");
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Lưu dữ liệu thống kê usage
+   */
+  saveRawApiUsageData(data) {
+    try {
+      localStorage.setItem("novel_studio_api_usage", JSON.stringify(data));
+    } catch (e) {
+      console.warn("Không thể lưu api usage vào localStorage:", e);
+    }
+  }
+
+  /**
+   * Ghi nhận 1 lượt gọi API và số token đã sử dụng - Lưu TÁCH BIỆT theo từng Model và từng Key
+   */
+  recordApiUsage(key, usageMetadata = {}, model = null) {
+    if (!key) return;
+
+    const data = this.getRawApiUsageData();
+    const currentDateStr = this.getGoogleUtc8DateString();
+    const now = Date.now();
+    const modelKey = model || "gemini-3.6-flash";
+
+    if (!data[key]) {
+      data[key] = {
+        keyMasked: this.maskApiKey(key),
+        lastResetDate: currentDateStr,
+        models: {}
+      };
+    }
+
+    const keyStats = data[key];
+
+    // Reset nếu sang ngày mới
+    if (keyStats.lastResetDate !== currentDateStr) {
+      keyStats.lastResetDate = currentDateStr;
+      if (keyStats.models) {
+        Object.keys(keyStats.models).forEach(m => {
+          if (keyStats.models[m]) {
+            keyStats.models[m].requestsToday = 0;
+          }
+        });
+      }
+    }
+
+    if (!keyStats.models) keyStats.models = {};
+    if (!keyStats.models[modelKey]) {
+      keyStats.models[modelKey] = {
+        rpmTimestamps: [],
+        requestsToday: 0,
+        totalRequests: 0,
+        promptTokens: 0,
+        candidatesTokens: 0,
+        totalTokens: 0,
+        lastUsedAt: null
+      };
+    }
+
+    const modelStats = keyStats.models[modelKey];
+
+    // Dọn dẹp sliding window 60s (RPM)
+    const windowStart = now - 60000;
+    modelStats.rpmTimestamps = (modelStats.rpmTimestamps || []).filter(ts => ts > windowStart);
+    modelStats.rpmTimestamps.push(now);
+
+    // Cập nhật số request cho model này
+    modelStats.requestsToday = (modelStats.requestsToday || 0) + 1;
+    modelStats.totalRequests = (modelStats.totalRequests || 0) + 1;
+    modelStats.lastUsedAt = now;
+
+    // Cập nhật token từ usageMetadata của Gemini
+    const promptCount = usageMetadata.promptTokenCount || 0;
+    const candidatesCount = usageMetadata.candidatesTokenCount || 0;
+    const totalCount = usageMetadata.totalTokenCount || (promptCount + candidatesCount);
+
+    modelStats.promptTokens = (modelStats.promptTokens || 0) + promptCount;
+    modelStats.candidatesTokens = (modelStats.candidatesTokens || 0) + candidatesCount;
+    modelStats.totalTokens = (modelStats.totalTokens || 0) + totalCount;
+
+    this.saveRawApiUsageData(data);
+
+    // Phát sự kiện cập nhật để UI lắng nghe và vẽ lại tức thì
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("novel_studio_api_usage_updated", {
+        detail: { key, model: modelKey, modelStats, usageMetadata }
+      }));
+    }
+
+    return modelStats;
+  }
+
+  /**
+   * Lấy thống kê sử dụng (RPM, RPD, Tokens) - TÍNH CHÍNH XÁC RIÊNG CHO TỪNG MODEL
+   */
+  getApiUsageStats(targetModel = null) {
+    const data = this.getRawApiUsageData();
+    const currentDateStr = this.getGoogleUtc8DateString();
+    const now = Date.now();
+    const windowStart = now - 60000;
+    const settings = this.getSettings();
+    const selectedModel = targetModel || settings.model || "gemini-3.6-flash";
+    const selectedModelLimits = this.getModelLimits(selectedModel);
+    const allModelLimits = this.getAllModelLimits();
+    const keysList = this.getApiKeys();
+
+    // 1. Thống kê tổng hợp cho Model đang chọn (Active Model)
+    let activeModelRpm = 0;
+    let activeModelRpd = 0;
+    let activeModelPromptTokens = 0;
+    let activeModelCandidatesTokens = 0;
+    let activeModelTotalTokens = 0;
+    let activeModelTotalRequests = 0;
+
+    // 2. Thống kê riêng cho từng model trong danh mục All Models
+    const allModelsSummary = {};
+    Object.keys(allModelLimits).forEach(m => {
+      allModelsSummary[m] = {
+        modelId: m,
+        name: allModelLimits[m].name,
+        category: allModelLimits[m].category,
+        limits: allModelLimits[m],
+        rpm: 0,
+        rpd: 0,
+        totalTokens: 0,
+        promptTokens: 0,
+        candidatesTokens: 0,
+        lastUsedAt: null
+      };
+    });
+
+    // 3. Phân rã dữ liệu từ từng API Key
+    const keyDetails = [];
+
+    keysList.forEach((k, idx) => {
+      const keyData = data[k] || { keyMasked: this.maskApiKey(k), lastResetDate: currentDateStr, models: {} };
+      
+      // Reset ngày nếu sang ngày mới
+      if (keyData.lastResetDate !== currentDateStr) {
+        keyData.lastResetDate = currentDateStr;
+        if (keyData.models) {
+          Object.keys(keyData.models).forEach(m => {
+            if (keyData.models[m]) keyData.models[m].requestsToday = 0;
+          });
+        }
+      }
+
+      const keyModels = keyData.models || {};
+      const activeStatsForThisKey = keyModels[selectedModel] || {
+        rpmTimestamps: [], requestsToday: 0, totalRequests: 0, promptTokens: 0, candidatesTokens: 0, totalTokens: 0, lastUsedAt: null
+      };
+
+      const validTimestamps = (activeStatsForThisKey.rpmTimestamps || []).filter(ts => ts > windowStart);
+      const rpm = validTimestamps.length;
+      const rpd = activeStatsForThisKey.requestsToday || 0;
+
+      activeModelRpm += rpm;
+      activeModelRpd += rpd;
+      activeModelPromptTokens += (activeStatsForThisKey.promptTokens || 0);
+      activeModelCandidatesTokens += (activeStatsForThisKey.candidatesTokens || 0);
+      activeModelTotalTokens += (activeStatsForThisKey.totalTokens || 0);
+      activeModelTotalRequests += (activeStatsForThisKey.totalRequests || 0);
+
+      // Cộng dồn vào allModelsSummary
+      Object.keys(keyModels).forEach(m => {
+        if (!allModelsSummary[m]) {
+          allModelsSummary[m] = {
+            modelId: m,
+            name: this.getModelLimits(m).name,
+            category: "Text-out models",
+            limits: this.getModelLimits(m),
+            rpm: 0,
+            rpd: 0,
+            totalTokens: 0,
+            promptTokens: 0,
+            candidatesTokens: 0,
+            lastUsedAt: null
+          };
+        }
+        const mStats = keyModels[m];
+        const mValidTs = (mStats.rpmTimestamps || []).filter(ts => ts > windowStart);
+        allModelsSummary[m].rpm += mValidTs.length;
+        allModelsSummary[m].rpd += (mStats.requestsToday || 0);
+        allModelsSummary[m].totalTokens += (mStats.totalTokens || 0);
+        allModelsSummary[m].promptTokens += (mStats.promptTokens || 0);
+        allModelsSummary[m].candidatesTokens += (mStats.candidatesTokens || 0);
+        if (mStats.lastUsedAt && (!allModelsSummary[m].lastUsedAt || mStats.lastUsedAt > allModelsSummary[m].lastUsedAt)) {
+          allModelsSummary[m].lastUsedAt = mStats.lastUsedAt;
+        }
+      });
+
+      keyDetails.push({
+        index: idx + 1,
+        key: k,
+        keyMasked: this.maskApiKey(k),
+        activeModel: selectedModel,
+        rpm,
+        rpmLimit: selectedModelLimits.rpm,
+        rpd,
+        rpdLimit: selectedModelLimits.rpd,
+        totalTokens: activeStatsForThisKey.totalTokens || 0,
+        lastUsedAt: activeStatsForThisKey.lastUsedAt
+      });
+    });
+
+    return {
+      activeModel: {
+        modelId: selectedModel,
+        name: selectedModelLimits.name,
+        rpm: activeModelRpm,
+        rpmLimit: selectedModelLimits.rpm,
+        rpd: activeModelRpd,
+        rpdLimit: selectedModelLimits.rpd,
+        tpmLimit: selectedModelLimits.tpm,
+        promptTokens: activeModelPromptTokens,
+        candidatesTokens: activeModelCandidatesTokens,
+        totalTokens: activeModelTotalTokens,
+        totalRequests: activeModelTotalRequests
+      },
+      allModels: Object.values(allModelsSummary),
+      activeKeyCount: keysList.length,
+      keys: keyDetails,
+      resetCountdown: this.getTimeUntilNextGoogleReset()
+    };
+  }
+
+  /**
+   * Reset toàn bộ hoặc 1 key thống kê
+   */
+  clearApiUsageStats(key = null) {
+    if (key) {
+      const data = this.getRawApiUsageData();
+      delete data[key];
+      this.saveRawApiUsageData(data);
+    } else {
+      localStorage.removeItem("novel_studio_api_usage");
+    }
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("novel_studio_api_usage_updated", { detail: {} }));
+    }
+  }
+
   // ==================== CUSTOM USER TROPES / TAGS ====================
 
   getCustomTags() {

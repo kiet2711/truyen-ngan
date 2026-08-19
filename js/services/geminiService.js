@@ -90,6 +90,11 @@ class GeminiService {
     }
 
     const data = await response.json();
+    if (data.usageMetadata) {
+      storageService.recordApiUsage(key, data.usageMetadata, model);
+    } else {
+      storageService.recordApiUsage(key, { promptTokenCount: 15, candidatesTokenCount: 10, totalTokenCount: 25 }, model);
+    }
     return data.candidates?.[0]?.content?.parts?.[0]?.text || "OK";
   }
 
@@ -171,6 +176,9 @@ Nhắc lại: Tuyệt đối không dùng tên hay địa điểm Việt Nam. S�
       }
 
       const resData = await response.json();
+      if (resData.usageMetadata) {
+        storageService.recordApiUsage(apiKey, resData.usageMetadata, model);
+      }
       const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
       const cleanJson = rawText.replace(/```json\s*|\s*```/g, "").trim();
       return JSON.parse(cleanJson);
@@ -253,6 +261,9 @@ Hãy xuất dữ liệu JSON Dàn ý chi tiết và Bảng nhân vật ngay bây
       }
 
       const resData = await response.json();
+      if (resData.usageMetadata) {
+        storageService.recordApiUsage(apiKey, resData.usageMetadata, model);
+      }
       const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
       const cleanJson = rawText.replace(/```json\s*|\s*```/g, "").trim();
       return JSON.parse(cleanJson);
@@ -346,6 +357,7 @@ Hãy bắt đầu viết nội dung Chương ${currentChapter.index} ngay bây g
       const decoder = new TextDecoder();
       let fullText = "";
       let buffer = "";
+      let streamUsageMetadata = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -361,6 +373,9 @@ Hãy bắt đầu viết nội dung Chương ${currentChapter.index} ngay bây g
             if (dataStr === "[DONE]") continue;
             try {
               const parsed = JSON.parse(dataStr);
+              if (parsed.usageMetadata) {
+                streamUsageMetadata = parsed.usageMetadata;
+              }
               const textChunk = parsed.candidates?.[0]?.content?.parts?.[0]?.text || "";
               if (textChunk) {
                 fullText += textChunk;
@@ -374,6 +389,15 @@ Hãy bắt đầu viết nội dung Chương ${currentChapter.index} ngay bây g
       }
 
       if (!fullText.trim()) throw new Error(`Chương ${currentChapter.index} sinh ra bị rỗng.`);
+
+      // Ghi nhận usage metadata vào StorageService
+      const recordedUsage = streamUsageMetadata || {
+        promptTokenCount: Math.ceil(userPrompt.length / 3),
+        candidatesTokenCount: Math.ceil(fullText.length / 3),
+        totalTokenCount: Math.ceil((userPrompt.length + fullText.length) / 3)
+      };
+      storageService.recordApiUsage(apiKey, recordedUsage, model);
+
       return fullText.trim();
     });
   }

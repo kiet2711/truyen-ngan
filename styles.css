@@ -1818,6 +1818,245 @@ body {
   color: white;
 }
 
+/* ==================== REAL-TIME QUOTA & TOKEN MONITOR STYLES ==================== */
+.api-quota-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-main);
+  transition: all 0.25s ease;
+  user-select: none;
+}
+
+.api-quota-live-pill:hover {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(168, 85, 247, 0.6);
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.25);
+  transform: translateY(-1px);
+}
+
+.quota-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: pulseQuota 2s infinite;
+}
+
+.quota-pulse-dot.warning {
+  background: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b;
+}
+
+.quota-pulse-dot.danger {
+  background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+}
+
+@keyframes pulseQuota {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.2); }
+}
+
+.quota-divider {
+  color: rgba(255, 255, 255, 0.15);
+  font-weight: 300;
+}
+
+.quota-text-rpm {
+  color: #a78bfa;
+}
+
+.quota-text-rpd {
+  color: #38bdf8;
+}
+
+.quota-text-tokens {
+  color: #f472b6;
+}
+
+/* Modal Quota Tracker Box */
+.quota-tracker-box {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.quota-tracker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.quota-tracker-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.quota-reset-timer {
+  font-size: 11px;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.quota-reset-timer strong {
+  color: #fbbf24;
+}
+
+.quota-progress-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.quota-card {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quota-card-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.quota-progress-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.quota-progress-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease, background 0.4s ease;
+}
+
+.quota-progress-bar.rpm-bar {
+  background: linear-gradient(90deg, #8b5cf6, #c084fc);
+}
+
+.quota-progress-bar.rpd-bar {
+  background: linear-gradient(90deg, #06b6d4, #38bdf8);
+}
+
+.quota-progress-bar.warning {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24) !important;
+}
+
+.quota-progress-bar.danger {
+  background: linear-gradient(90deg, #ef4444, #f43f5e) !important;
+}
+
+.quota-subtext {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.quota-token-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.token-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.token-stat-pill.highlight {
+  background: rgba(236, 72, 153, 0.12);
+  border-color: rgba(236, 72, 153, 0.3);
+  color: #f472b6;
+}
+
+.token-stat-pill strong {
+  font-weight: 700;
+}
+
+/* Per-Key Table */
+.quota-keys-table-container {
+  max-height: 140px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.quota-keys-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  text-align: left;
+}
+
+.quota-keys-table th {
+  background: rgba(30, 41, 59, 0.7);
+  padding: 6px 10px;
+  color: #94a3b8;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.quota-keys-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  color: #e2e8f0;
+}
+
+.quota-keys-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.quota-keys-table code {
+  font-family: monospace;
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .step-indicator-bar {
@@ -1841,6 +2080,7 @@ body {
     width: 100%;
     justify-content: flex-start;
   }
+  .quota-progress-grid {
+    grid-template-columns: 1fr;
+  }
 }
-
-

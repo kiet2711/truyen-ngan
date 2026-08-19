@@ -25,9 +25,20 @@ class NovelStudioApp {
   async init() {
     this.bindEvents();
     this.updateApiKeyStatus();
+    this.updateQuotaDisplay();
     this.updateSavedCount();
     this.renderTropeCloud();
     await this.initAuth();
+
+    // Định kỳ cập nhật thanh RPM & đồng hồ đếm ngược reset ngày mỗi 4 giây
+    setInterval(() => {
+      this.updateQuotaDisplay();
+    }, 4000);
+
+    // Lắng nghe sự kiện cập nhật usage từ geminiService/storageService
+    window.addEventListener("novel_studio_api_usage_updated", () => {
+      this.updateQuotaDisplay();
+    });
   }
 
   // ==================== UI HELPERS & NOTIFICATIONS ====================
@@ -49,6 +60,13 @@ class NovelStudioApp {
     return text.trim().split(/\s+/).filter(Boolean).length;
   }
 
+  formatTokenCount(num) {
+    if (!num || num === 0) return "0";
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
+    if (num >= 1000) return (num / 1000).toFixed(1) + "k";
+    return num.toLocaleString("vi-VN");
+  }
+
   updateApiKeyStatus() {
     const keys = storageService.getApiKeys();
     const badge = document.getElementById("apiKeyStatusBadge");
@@ -60,6 +78,130 @@ class NovelStudioApp {
     } else {
       badge.className = "badge badge-purple";
       text.textContent = "Chưa có API Key";
+    }
+
+    this.updateQuotaDisplay();
+  }
+
+  updateQuotaDisplay(forcedModel = null) {
+    const modalSelectEl = document.getElementById("modelSelect");
+    const activeModelId = forcedModel || (modalSelectEl ? modalSelectEl.value : null);
+    const stats = storageService.getApiUsageStats(activeModelId);
+    if (!stats) return;
+
+    const activeModel = stats.activeModel;
+
+    // 1. Cập nhật Header Live Badge theo Model đang chọn
+    const rpmTextEl = document.getElementById("liveRpmText");
+    const rpdTextEl = document.getElementById("liveRpdText");
+    const tokensTextEl = document.getElementById("liveTokensText");
+    const pulseDot = document.querySelector("#apiQuotaLiveBadge .quota-pulse-dot");
+
+    if (rpmTextEl) rpmTextEl.textContent = `${activeModel.rpm}/${activeModel.rpmLimit} RPM`;
+    if (rpdTextEl) rpdTextEl.textContent = `${activeModel.rpd}/${activeModel.rpdLimit} RPD`;
+    if (tokensTextEl) tokensTextEl.textContent = `${this.formatTokenCount(activeModel.totalTokens)} Tok`;
+
+    if (pulseDot) {
+      const rpmPercent = (activeModel.rpm / activeModel.rpmLimit) * 100;
+      const rpdPercent = (activeModel.rpd / activeModel.rpdLimit) * 100;
+      pulseDot.className = "quota-pulse-dot";
+      if (rpmPercent >= 90 || rpdPercent >= 95) {
+        pulseDot.classList.add("danger");
+      } else if (rpmPercent >= 60 || rpdPercent >= 75) {
+        pulseDot.classList.add("warning");
+      }
+    }
+
+    // 2. Cập nhật Modal Cài Đặt
+    const activeBadge = document.getElementById("modalActiveModelBadge");
+    if (activeBadge) activeBadge.textContent = activeModel.modelId;
+
+    const modalRpmLabel = document.getElementById("modalRpmLabel");
+    const modalRpmBar = document.getElementById("modalRpmBar");
+    const modalRpdLabel = document.getElementById("modalRpdLabel");
+    const modalRpdBar = document.getElementById("modalRpdBar");
+    const modalPromptTokens = document.getElementById("modalPromptTokens");
+    const modalCandidatesTokens = document.getElementById("modalCandidatesTokens");
+    const modalTotalTokens = document.getElementById("modalTotalTokens");
+    const resetTimerEl = document.getElementById("quotaResetCountdown");
+
+    if (resetTimerEl && stats.resetCountdown) {
+      resetTimerEl.innerHTML = `🕒 Reset ngày sau: <strong>${stats.resetCountdown.hours}h ${stats.resetCountdown.minutes}m</strong>`;
+    }
+
+    if (modalRpmLabel && modalRpmBar) {
+      modalRpmLabel.textContent = `${activeModel.rpm} / ${activeModel.rpmLimit} RPM`;
+      const rpmPct = Math.min(100, Math.round((activeModel.rpm / activeModel.rpmLimit) * 100));
+      modalRpmBar.style.width = `${rpmPct}%`;
+      modalRpmBar.className = "quota-progress-bar rpm-bar";
+      if (rpmPct >= 90) modalRpmBar.classList.add("danger");
+      else if (rpmPct >= 65) modalRpmBar.classList.add("warning");
+    }
+
+    if (modalRpdLabel && modalRpdBar) {
+      modalRpdLabel.textContent = `${activeModel.rpd} / ${activeModel.rpdLimit} RPD`;
+      const rpdPct = Math.min(100, Math.round((activeModel.rpd / activeModel.rpdLimit) * 100));
+      modalRpdBar.style.width = `${rpdPct}%`;
+      modalRpdBar.className = "quota-progress-bar rpd-bar";
+      if (rpdPct >= 90) modalRpdBar.classList.add("danger");
+      else if (rpdPct >= 75) modalRpdBar.classList.add("warning");
+    }
+
+    if (modalPromptTokens) modalPromptTokens.textContent = (activeModel.promptTokens || 0).toLocaleString("vi-VN");
+    if (modalCandidatesTokens) modalCandidatesTokens.textContent = (activeModel.candidatesTokens || 0).toLocaleString("vi-VN");
+    if (modalTotalTokens) modalTotalTokens.textContent = (activeModel.totalTokens || 0).toLocaleString("vi-VN");
+
+    // 3. Render Bảng All Models Dashboard (Hạn mức từng model độc lập)
+    const allModelsTableBody = document.getElementById("modalAllModelsTableBody");
+    if (allModelsTableBody && stats.allModels) {
+      allModelsTableBody.innerHTML = stats.allModels.map(m => {
+        const isCurrent = m.modelId === activeModel.modelId;
+        const isExhausted = m.rpd >= m.limits.rpd;
+        const isWarning = m.rpm >= m.limits.rpm;
+
+        let statusHtml = `<span class="badge" style="background: rgba(255,255,255,0.05); color: var(--text-muted); font-size: 10px;">⚪ Sẵn sàng</span>`;
+        if (isExhausted) {
+          statusHtml = `<span class="badge" style="background: rgba(239,68,68,0.25); color: #f87171; font-size: 10px;">🚫 Cạn RPD</span>`;
+        } else if (isWarning) {
+          statusHtml = `<span class="badge" style="background: rgba(245,158,11,0.25); color: #fbbf24; font-size: 10px;">⚠️ Chạm RPM</span>`;
+        } else if (isCurrent) {
+          statusHtml = `<span class="badge badge-emerald" style="font-size: 10px;">🟢 Đang chọn</span>`;
+        }
+
+        return `
+          <tr style="${isCurrent ? 'background: rgba(139, 92, 246, 0.12);' : ''}">
+            <td>
+              <strong>${m.name}</strong>
+              <div style="font-size: 10px; color: var(--text-dim);">${m.modelId}</div>
+            </td>
+            <td><strong style="color: #a78bfa;">${m.rpm}</strong> / ${m.limits.rpm}</td>
+            <td><strong style="color: #38bdf8;">${m.rpd}</strong> / ${m.limits.rpd}</td>
+            <td style="color: #cbd5e1;">${this.formatTokenCount(m.limits.tpm)}</td>
+            <td>${statusHtml}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    // 4. Hiển thị bảng chi tiết từng Key nếu có > 1 key
+    const perKeyContainer = document.getElementById("modalPerKeyContainer");
+    const tableBody = document.getElementById("modalPerKeyTableBody");
+
+    if (perKeyContainer && tableBody) {
+      if (stats.keys && stats.keys.length > 1) {
+        perKeyContainer.style.display = "block";
+        tableBody.innerHTML = stats.keys.map(k => `
+          <tr>
+            <td><code>${k.keyMasked}</code></td>
+            <td><strong style="color: #a78bfa;">${k.rpm}</strong> / ${k.rpmLimit}</td>
+            <td><strong style="color: #38bdf8;">${k.rpd}</strong> / ${k.rpdLimit}</td>
+            <td>${this.formatTokenCount(k.totalTokens)}</td>
+            <td style="font-size: 10px; color: var(--text-muted);">${k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Chưa dùng'}</td>
+          </tr>
+        `).join("");
+      } else {
+        perKeyContainer.style.display = "none";
+      }
     }
   }
 
@@ -1574,9 +1716,27 @@ class NovelStudioApp {
     // Header buttons
     document.getElementById("btnOpenApiSettings").addEventListener("click", () => this.openApiSettingsModal());
     document.getElementById("apiKeyStatusBadge").addEventListener("click", () => this.openApiSettingsModal());
+    
+    const liveQuotaBadge = document.getElementById("apiQuotaLiveBadge");
+    if (liveQuotaBadge) {
+      liveQuotaBadge.addEventListener("click", () => this.openApiSettingsModal());
+    }
+
+    const btnClearApiStats = document.getElementById("btnClearApiStats");
+    if (btnClearApiStats) {
+      btnClearApiStats.addEventListener("click", () => this.clearApiUsageStats());
+    }
+
     document.getElementById("btnCloseApiSettings").addEventListener("click", () => this.closeApiSettingsModal());
     document.getElementById("btnSaveApiSettings").addEventListener("click", () => this.saveApiSettings());
     document.getElementById("btnTestApiKey").addEventListener("click", () => this.testApiKeyConnection());
+
+    const modelSelectEl = document.getElementById("modelSelect");
+    if (modelSelectEl) {
+      modelSelectEl.addEventListener("change", (e) => {
+        this.updateQuotaDisplay(e.target.value);
+      });
+    }
 
     document.getElementById("btnOpenLibrary").addEventListener("click", () => this.openStoryLibraryModal());
     document.getElementById("btnCloseStoryLibrary").addEventListener("click", () => this.closeStoryLibraryModal());
@@ -1796,16 +1956,25 @@ class NovelStudioApp {
     const settings = storageService.getSettings();
 
     document.getElementById("apiKeysInput").value = keys.join("\n");
-    document.getElementById("modelSelect").value = settings.model || "gemini-2.5-flash";
+    document.getElementById("modelSelect").value = settings.model || "gemini-3.6-flash";
     document.getElementById("throttleDelayInput").value = settings.delayBetweenChapters || 3500;
     document.getElementById("chapterTempInput").value = settings.temperatureChapter || 0.8;
     document.getElementById("apiTestResult").textContent = "";
 
+    this.updateQuotaDisplay();
     document.getElementById("apiSettingsModal").classList.add("open");
   }
 
   closeApiSettingsModal() {
     document.getElementById("apiSettingsModal").classList.remove("open");
+  }
+
+  clearApiUsageStats() {
+    if (confirm("Bạn có chắc chắn muốn đặt lại bộ đếm token và request về 0 không?")) {
+      storageService.clearApiUsageStats();
+      this.updateQuotaDisplay();
+      this.showToast("Đã đặt lại toàn bộ thống kê API!", "info");
+    }
   }
 
   async saveApiSettings() {

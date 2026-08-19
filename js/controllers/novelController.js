@@ -949,12 +949,31 @@ export class NovelController {
     return fullText;
   }
 
+  buildOriginalNovelText() {
+    if (!this.currentStory || !this.currentStory.chapters) return "";
+    return this.currentStory.chapters.map(c => `=== CHƯƠNG ${c.chapterNumber}: ${c.title} ===\n\n${c.content}`).join("\n\n\n");
+  }
+
+  getCurrentStoryText() {
+    if (!this.currentStory || !this.currentStory.chapters) return "";
+    if (this.isAudioCleaned) {
+      return this.buildCleanAudioText();
+    }
+    return this.buildOriginalNovelText();
+  }
+
   exportTxt() {
     if (!this.currentStory) return;
-    const text = this.buildCleanAudioText() || this.currentStory.chapters.map(c => `=== CHƯƠNG ${c.chapterNumber}: ${c.title} ===\n\n${c.content}`).join("\n\n\n");
-    const filename = `${this.currentStory.title.replace(/[\/\\:*?"<>|]/g, "_")}.txt`;
+    const text = this.getCurrentStoryText();
+    if (!text) {
+      this.app.showToast("Chưa có nội dung truyện để xuất file!", "warning");
+      return;
+    }
+    const suffix = this.isAudioCleaned ? "_audio" : "";
+    const filename = `${this.currentStory.title.replace(/[\/\\:*?"<>|]/g, "_")}${suffix}.txt`;
     this.app.triggerDownload(text, filename, "text/plain;charset=utf-8");
-    this.app.showToast(`Đã xuất file TXT: ${filename}`, "success");
+    const modeName = this.isAudioCleaned ? "Bản Chuẩn Hóa Audio" : "Bản Gốc";
+    this.app.showToast(`Đã xuất file TXT (${modeName}): ${filename}`, "success");
   }
 
   exportMarkdown() {
@@ -1152,13 +1171,27 @@ export class NovelController {
 
     const btnCleanAudio = document.getElementById("btnCleanForAudio");
     const btnRestoreText = document.getElementById("btnRestoreOriginalText");
+    const btnQuickCopy = document.getElementById("btnQuickCopyCleanText");
+    const btnQuickTxt = document.getElementById("btnQuickDownloadAudioTxt");
+
+    const updateActionButtonsState = () => {
+      if (this.isAudioCleaned) {
+        if (btnQuickCopy) btnQuickCopy.innerHTML = "📋 Sao Chép (Đã Chuẩn Hóa)";
+        if (btnQuickTxt) btnQuickTxt.innerHTML = "📥 Tải .TXT (Đã Chuẩn Hóa)";
+      } else {
+        if (btnQuickCopy) btnQuickCopy.innerHTML = "📋 Sao Chép";
+        if (btnQuickTxt) btnQuickTxt.innerHTML = "📥 Tải .TXT";
+      }
+    };
+
     if (btnCleanAudio) {
       btnCleanAudio.addEventListener("click", () => {
         this.isAudioCleaned = true;
         btnCleanAudio.style.display = "none";
         if (btnRestoreText) btnRestoreText.style.display = "inline-flex";
+        updateActionButtonsState();
         this.renderReaderMode();
-        this.app.showToast("Đã chuẩn hóa toàn bộ văn bản cho Audio / TTS! ✨", "success");
+        this.app.showToast("Đã kích hoạt chế độ Chuẩn Hóa Audio! Nút Sao Chép & Tải .TXT sẽ lấy bản đã làm sạch số. ✨", "success");
       });
     }
 
@@ -1167,8 +1200,9 @@ export class NovelController {
         this.isAudioCleaned = false;
         btnRestoreText.style.display = "none";
         if (btnCleanAudio) btnCleanAudio.style.display = "inline-flex";
+        updateActionButtonsState();
         this.renderReaderMode();
-        this.app.showToast("Đã khôi phục về bản gốc ban đầu.", "info");
+        this.app.showToast("Đã trở về Bản Gốc! Nút Sao Chép & Tải .TXT sẽ lấy nguyên văn ban đầu.", "info");
       });
     }
 
@@ -1188,20 +1222,19 @@ export class NovelController {
       });
     }
 
-    const btnQuickCopy = document.getElementById("btnQuickCopyCleanText");
     if (btnQuickCopy) {
       btnQuickCopy.addEventListener("click", async () => {
-        const text = this.buildCleanAudioText() || (this.currentStory?.chapters || []).map(c => c.content).join("\n\n");
+        const text = this.getCurrentStoryText();
         if (!text) {
           this.app.showToast("Chưa có nội dung truyện để sao chép!", "warning");
           return;
         }
         await navigator.clipboard.writeText(text);
-        this.app.showToast("Đã sao chép toàn bộ văn bản truyện vào clipboard! 📋", "success");
+        const modeLabel = this.isAudioCleaned ? "Bản Chuẩn Hóa Audio" : "Bản Gốc";
+        this.app.showToast(`Đã sao chép toàn bộ truyện (${modeLabel}) vào clipboard! 📋`, "success");
       });
     }
 
-    const btnQuickTxt = document.getElementById("btnQuickDownloadAudioTxt");
     if (btnQuickTxt) {
       btnQuickTxt.addEventListener("click", () => this.exportTxt());
     }

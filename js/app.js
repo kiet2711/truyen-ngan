@@ -71,10 +71,13 @@ class NovelStudioApp {
     const keys = storageService.getApiKeys();
     const badge = document.getElementById("apiKeyStatusBadge");
     const text = document.getElementById("keyStatusText");
+    const activeInfo = geminiService.getCurrentActiveKeyInfo();
 
     if (keys.length > 0) {
       badge.className = "badge badge-emerald";
-      text.textContent = `${keys.length} API Key sẵn sàng`;
+      text.textContent = keys.length > 1
+        ? `${keys.length} API Keys (Đang dùng Key #${activeInfo?.index || 1})`
+        : `1 API Key sẵn sàng`;
     } else {
       badge.className = "badge badge-purple";
       text.textContent = "Chưa có API Key";
@@ -194,22 +197,41 @@ class NovelStudioApp {
       }).join("");
     }
 
-    // 4. Hiển thị bảng chi tiết từng Key nếu có > 1 key
+    // 4. Hiển thị bảng chi tiết từng Key (hiển thị khi có >= 1 key)
     const perKeyContainer = document.getElementById("modalPerKeyContainer");
     const tableBody = document.getElementById("modalPerKeyTableBody");
+    const activeKeyIndicator = document.getElementById("modalActiveKeyIndicator");
+    const activeKeyInfo = geminiService.getCurrentActiveKeyInfo();
 
     if (perKeyContainer && tableBody) {
-      if (stats.keys && stats.keys.length > 1) {
+      if (stats.keys && stats.keys.length >= 1) {
         perKeyContainer.style.display = "block";
-        tableBody.innerHTML = stats.keys.map(k => `
-          <tr>
-            <td><code>${k.keyMasked}</code></td>
-            <td><strong style="color: #a78bfa;">${k.rpm}</strong> / ${k.rpmLimit}</td>
-            <td><strong style="color: #38bdf8;">${k.rpd}</strong> / ${k.rpdLimit}</td>
-            <td>${this.formatTokenCount(k.totalTokens)}</td>
-            <td style="font-size: 10px; color: var(--text-muted);">${k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Chưa dùng'}</td>
-          </tr>
-        `).join("");
+        if (activeKeyIndicator && activeKeyInfo) {
+          activeKeyIndicator.innerHTML = `🟢 Đang phát lệnh bằng: <strong>Key #${activeKeyInfo.index}</strong>`;
+        }
+        tableBody.innerHTML = stats.keys.map(k => {
+          const isActive = activeKeyInfo && k.index === activeKeyInfo.index;
+          return `
+            <tr style="${isActive ? 'background: rgba(16, 185, 129, 0.08);' : ''}">
+              <td>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-weight: 700; color: #e2e8f0;">#${k.index}</span>
+                  <code>${k.keyMasked}</code>
+                </div>
+              </td>
+              <td>
+                ${isActive 
+                  ? `<span class="badge badge-emerald" style="font-size: 10px;">🟢 Đang dùng</span>` 
+                  : `<span class="badge" style="background: rgba(255,255,255,0.06); color: var(--text-muted); font-size: 10px;">⚪ Chờ xoay tua</span>`
+                }
+              </td>
+              <td><strong style="color: #38bdf8;">${k.rpd}</strong> / ${k.rpdLimit}</td>
+              <td><strong style="color: #f472b6;">${this.formatTokenCount(k.totalTokens)}</strong></td>
+              <td><strong style="color: #a78bfa;">${k.rpm}</strong> / ${k.rpmLimit}</td>
+              <td style="font-size: 10px; color: var(--text-muted);">${k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Chưa dùng'}</td>
+            </tr>
+          `;
+        }).join("");
       } else {
         perKeyContainer.style.display = "none";
       }

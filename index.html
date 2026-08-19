@@ -625,19 +625,23 @@
             </div>
           </div>
 
-          <!-- Per-Key Table (if multiple keys configured) -->
+          <!-- Per-Key Table (Luôn hiển thị khi có >= 1 key) -->
           <div id="modalPerKeyContainer" style="display: none; margin-top: 6px;">
-            <div style="font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">
-              🔑 Chi tiết từng API Key đang xoay tua (Model hiện tại):
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">
+                🔑 Chi tiết Lượng Dùng & Token của từng API Key (Model hiện tại):
+              </span>
+              <span id="modalActiveKeyIndicator" style="font-size: 10px; color: #a78bfa;"></span>
             </div>
             <div class="quota-keys-table-container">
               <table class="quota-keys-table">
                 <thead>
                   <tr>
-                    <th>Key</th>
-                    <th>RPM (1m)</th>
-                    <th>RPD (Ngày)</th>
-                    <th>Tokens</th>
+                    <th>Thứ tự & Key</th>
+                    <th>Trạng thái</th>
+                    <th>RPD (Lượt gọi hôm nay)</th>
+                    <th>Tokens Đã Dùng</th>
+                    <th>RPM (1 phút)</th>
                     <th>Lần dùng cuối</th>
                   </tr>
                 </thead>

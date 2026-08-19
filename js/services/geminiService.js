@@ -37,6 +37,18 @@ class GeminiService {
     return keys[this.currentKeyIndex % keys.length];
   }
 
+  getCurrentActiveKeyInfo() {
+    const keys = storageService.getApiKeys();
+    if (!keys || keys.length === 0) return null;
+    const activeIndex = this.currentKeyIndex % keys.length;
+    return {
+      index: activeIndex + 1,
+      totalKeys: keys.length,
+      key: keys[activeIndex],
+      keyMasked: storageService.maskApiKey(keys[activeIndex])
+    };
+  }
+
   rotateKey() {
     const keys = storageService.getApiKeys();
     if (keys.length > 1) {

@@ -104,9 +104,7 @@ class StorageService {
       "gemini-2.5-flash":      { rpm: 5,  rpd: 20,    tpm: 250000, name: "Gemini 2.5 Flash",      category: "Text-out models" },
       "gemini-2.5-flash-lite": { rpm: 10, rpd: 20,    tpm: 250000, name: "Gemini 2.5 Flash Lite", category: "Text-out models" },
       "gemma-4-31b-it":        { rpm: 30, rpd: 14400, tpm: 16000,  name: "Gemma 4 31B",         category: "Other models", highlight: true },
-      "gemma-4-26b-a4b-it":    { rpm: 30, rpd: 14400, tpm: 16000,  name: "Gemma 4 26B (MoE)",   category: "Other models", highlight: true },
-      "gemini-2.0-flash":      { rpm: 10, rpd: 1500,  tpm: 1000000, name: "Gemini 2.0 Flash",    category: "Text-out models" },
-      "gemini-1.5-flash":      { rpm: 15, rpd: 1500,  tpm: 1000000, name: "Gemini 1.5 Flash",    category: "Text-out models" }
+      "gemma-4-26b-a4b-it":    { rpm: 30, rpd: 14400, tpm: 16000,  name: "Gemma 4 26B (MoE)",   category: "Other models", highlight: true }
     };
   }
 

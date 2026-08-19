@@ -862,7 +862,7 @@ export class NovelController {
 
       await this.app.saveCurrentStory();
       this.renderChapterGenerationList();
-      this.app.showToast(`Đã viết lại xong Chương ${chapter.chapterNumber}!`, "success");
+      this.app.showToast(`Đã viết lại xong Chương ${chapter.chapterNumber}! ✨`, "success");
     } catch (e) {
       chapter.status = "error";
       this.renderChapterGenerationList();
@@ -874,6 +874,11 @@ export class NovelController {
 
   setupStep4View() {
     this.renderReaderMode();
+  }
+
+  stripLeadingChapterTitle(text) {
+    if (!text) return "";
+    return text.replace(/^\s*(?:#+\s*)?(?:Chương|Hồi|Tập|Chapter|Phần)\s*\d+[^:\n]*[:.-]?[^\n]*\n+/i, "").trim();
   }
 
   renderReaderMode() {
@@ -910,7 +915,7 @@ export class NovelController {
               <span class="audio-banner-icon">✨</span>
               <div>
                 <strong>Chế độ Xem Bản Dịch Âm / Audio TTS đã kích hoạt:</strong>
-                <div style="font-size: 12px; color: var(--text-dim);">Toàn bộ số đã được chuyển thành chữ tiếng Việt, loại bỏ markdown để sẵn sàng phát âm.</div>
+                <div style="font-size: 12px; color: var(--text-dim);">Toàn bộ số đã được chuyển thành chữ tiếng Việt, loại bỏ markdown và tiêu đề chương để sẵn sàng phát âm.</div>
               </div>
             </div>
             <div class="audio-banner-tags">
@@ -927,7 +932,11 @@ export class NovelController {
         if (this.audioSingleParagraph) {
           let mergedText = (story.chapters || []).map(ch => {
             const titleLine = this.audioRemoveTitles ? "" : `Chương ${ch.chapterNumber}: ${ch.title}. `;
-            return titleLine + (ch.content || "");
+            let rawContent = ch.content || "";
+            if (this.audioRemoveTitles) {
+              rawContent = this.stripLeadingChapterTitle(rawContent);
+            }
+            return titleLine + rawContent;
           }).join(" ");
           mergedText = mergedText.replace(/\n+/g, " ");
 
@@ -943,6 +952,11 @@ export class NovelController {
                 Chương ${ch.chapterNumber}: ${ch.title}
               </h2>
             `;
+            let rawContent = ch.content || "";
+            if (this.audioRemoveTitles) {
+              rawContent = this.stripLeadingChapterTitle(rawContent);
+            }
+
             const blockStyle = this.audioRemoveTitles 
               ? "margin-bottom: 24px; padding-bottom: 18px; border-bottom: 1px dashed rgba(255,255,255,0.08);"
               : "margin-bottom: 36px; padding-bottom: 28px; border-bottom: 1px dashed rgba(255,255,255,0.12);";
@@ -950,7 +964,7 @@ export class NovelController {
             return `
               <div class="reader-chapter-block" id="chapter_read_${ch.chapterNumber}" style="${blockStyle}">
                 ${headerHtml}
-                <div style="font-size: 15px; line-height: 1.85; color: var(--text-main); white-space: pre-wrap;">${ch.content || '<em style="color: var(--text-dim);">(Chương này chưa có nội dung)</em>'}</div>
+                <div style="font-size: 15px; line-height: 1.85; color: var(--text-main); white-space: pre-wrap;">${rawContent || '<em style="color: var(--text-dim);">(Chương này chưa có nội dung)</em>'}</div>
               </div>
             `;
           }).join("");
@@ -963,7 +977,11 @@ export class NovelController {
     if (!this.currentStory || !this.currentStory.chapters) return "";
     let fullText = this.currentStory.chapters.map(ch => {
       const titleLine = this.audioRemoveTitles ? "" : `Chương ${ch.chapterNumber}: ${ch.title}\n\n`;
-      const cleaned = normalizeTextForAudio(ch.content || "");
+      let rawContent = ch.content || "";
+      if (this.audioRemoveTitles) {
+        rawContent = this.stripLeadingChapterTitle(rawContent);
+      }
+      const cleaned = normalizeTextForAudio(rawContent);
       return titleLine + cleaned;
     }).join("\n\n---\n\n");
 

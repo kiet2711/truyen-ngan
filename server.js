@@ -5,10 +5,25 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const db = require('./server/db');
 const auth = require('./server/auth');
+const capcutStt = require('./server/capcutStt');
 
 const PORT = process.env.PORT || 3000;
+
+// In-memory Task store for asynchronous STT operations
+const sttTasks = new Map();
+
+// Periodic cleanup of completed/expired STT tasks (> 1 hour)
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, task] of sttTasks.entries()) {
+    if (now - task.createdAt > 3600000) {
+      sttTasks.delete(id);
+    }
+  }
+}, 600000);
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -216,6 +231,177 @@ const server = http.createServer(async (req, res) => {
         const storyId = pathname.substring('/api/user/stories/'.length);
         const result = await auth.deleteUserStory(user.id, storyId);
         return sendJson(res, 200, result);
+      }
+
+      // ==================== STT (SPEECH-TO-TEXT) ENDPOINTS ====================
+
+      // 14. STT: Direct / Synchronous Transcribe
+      if (pathname === '/api/stt/transcribe' && req.method === 'POST') {
+        const language = req.headers['x-language'] || req.headers['language'] || 'vi-VN';
+        const useTranslation = req.headers['x-use-translation'] === 'true' || req.headers['x-use-translation'] === '1';
+        const translationLanguage = req.headers['x-translation-language'] || 'vi-VN';
+
+        const chunks = [];
+        let totalSize = 0;
+        req.on('data', chunk => {
+          chunks.push(chunk);
+          totalSize += chunk.length;
+          if (totalSize > 120 * 1024 * 1024) { // 120MB limit
+            req.destroy(new Error("File âm thanh vượt quá giới hạn 120MB."));
+          }
+        });
+
+        req.on('end', async () => {
+          try {
+            let buffer = Buffer.concat(chunks);
+            let finalLang = language;
+            let finalUseTrans = useTranslation;
+            let finalTransLang = translationLanguage;
+
+            const contentType = req.headers['content-type'] || '';
+            if (contentType.includes('application/json')) {
+              const jsonBody = JSON.parse(buffer.toString('utf-8'));
+              if (jsonBody.audioBase64) {
+                buffer = Buffer.from(jsonBody.audioBase64, 'base64');
+              }
+              if (jsonBody.language) finalLang = jsonBody.language;
+              if (jsonBody.useTranslation !== undefined) finalUseTrans = Boolean(jsonBody.useTranslation);
+              if (jsonBody.translationLanguage) finalTransLang = jsonBody.translationLanguage;
+            }
+
+            if (!buffer || buffer.length === 0) {
+              return sendJson(res, 400, { error: "Không tìm thấy dữ liệu tệp âm thanh hợp lệ." });
+            }
+
+            const result = await capcutStt.transcribeAudioBuffer(buffer, {
+              language: finalLang,
+              useTranslation: finalUseTrans,
+              translationLanguage: finalTransLang
+            });
+
+            return sendJson(res, 200, { success: true, data: result });
+          } catch (err) {
+            console.error("STT Transcribe Error:", err);
+            return sendJson(res, 500, { error: err.message || "Lỗi xử lý nhận dạng giọng nói STT." });
+          }
+        });
+        return;
+      }
+
+      // 15. STT: Start Async Task
+      if (pathname === '/api/stt/start' && req.method === 'POST') {
+        const language = req.headers['x-language'] || req.headers['language'] || 'vi-VN';
+        const useTranslation = req.headers['x-use-translation'] === 'true' || req.headers['x-use-translation'] === '1';
+        const translationLanguage = req.headers['x-translation-language'] || 'vi-VN';
+
+        const chunks = [];
+        let totalSize = 0;
+        req.on('data', chunk => {
+          chunks.push(chunk);
+          totalSize += chunk.length;
+          if (totalSize > 120 * 1024 * 1024) {
+            req.destroy(new Error("File âm thanh vượt quá giới hạn 120MB."));
+          }
+        });
+
+        req.on('end', async () => {
+          try {
+            let buffer = Buffer.concat(chunks);
+            let finalLang = language;
+            let finalUseTrans = useTranslation;
+            let finalTransLang = translationLanguage;
+
+            const contentType = req.headers['content-type'] || '';
+            if (contentType.includes('application/json')) {
+              const jsonBody = JSON.parse(buffer.toString('utf-8'));
+              if (jsonBody.audioBase64) {
+                buffer = Buffer.from(jsonBody.audioBase64, 'base64');
+              }
+              if (jsonBody.language) finalLang = jsonBody.language;
+              if (jsonBody.useTranslation !== undefined) finalUseTrans = Boolean(jsonBody.useTranslation);
+              if (jsonBody.translationLanguage) finalTransLang = jsonBody.translationLanguage;
+            }
+
+            if (!buffer || buffer.length === 0) {
+              return sendJson(res, 400, { error: "Không tìm thấy dữ liệu tệp âm thanh hợp lệ." });
+            }
+
+            const taskId = crypto.randomUUID();
+            const taskObj = {
+              id: taskId,
+              status: 'processing',
+              progress: 10,
+              phase: 'uploading',
+              message: 'Đang tải tệp âm thanh lên CapCut Cloud...',
+              createdAt: Date.now(),
+              result: null,
+              error: null
+            };
+            sttTasks.set(taskId, taskObj);
+
+            // Execute async task in background
+            capcutStt.transcribeAudioBuffer(buffer, {
+              language: finalLang,
+              useTranslation: finalUseTrans,
+              translationLanguage: finalTransLang
+            }, (prog) => {
+              taskObj.phase = prog.phase;
+              taskObj.message = prog.message;
+              if (prog.phase === 'uploading') taskObj.progress = 25;
+              else if (prog.phase === 'creating_task') taskObj.progress = 45;
+              else if (prog.phase === 'polling') {
+                taskObj.progress = Math.min(95, 45 + Math.round((prog.elapsed || 1) * 2));
+              }
+            }).then(result => {
+              taskObj.status = 'completed';
+              taskObj.progress = 100;
+              taskObj.message = 'Nhận dạng giọng nói thành công!';
+              taskObj.result = result;
+            }).catch(err => {
+              console.error(`STT Task ${taskId} failed:`, err);
+              taskObj.status = 'failed';
+              taskObj.error = err.message || 'Lỗi nhận dạng giọng nói';
+              taskObj.message = err.message || 'Lỗi nhận dạng giọng nói';
+            });
+
+            return sendJson(res, 200, { success: true, taskId, message: "Đã bắt đầu tác vụ nhận dạng STT" });
+          } catch (err) {
+            console.error("STT Start Error:", err);
+            return sendJson(res, 500, { error: err.message || "Lỗi khởi tạo tác vụ STT." });
+          }
+        });
+        return;
+      }
+
+      // 16. STT: Get Task Status
+      if (pathname.startsWith('/api/stt/status/') && req.method === 'GET') {
+        const taskId = pathname.substring('/api/stt/status/'.length);
+        const task = sttTasks.get(taskId);
+        if (!task) {
+          return sendJson(res, 404, { error: "Không tìm thấy tác vụ STT hoặc đã hết hạn" });
+        }
+        return sendJson(res, 200, {
+          success: true,
+          taskId: task.id,
+          status: task.status,
+          progress: task.progress,
+          phase: task.phase,
+          message: task.message,
+          error: task.error
+        });
+      }
+
+      // 17. STT: Get Task Result
+      if (pathname.startsWith('/api/stt/result/') && req.method === 'GET') {
+        const taskId = pathname.substring('/api/stt/result/'.length);
+        const task = sttTasks.get(taskId);
+        if (!task) {
+          return sendJson(res, 404, { error: "Không tìm thấy tác vụ STT hoặc đã hết hạn" });
+        }
+        if (task.status !== 'completed' || !task.result) {
+          return sendJson(res, 400, { error: "Tác vụ chưa hoàn thành hoặc đã thất bại", status: task.status });
+        }
+        return sendJson(res, 200, { success: true, data: task.result });
       }
 
       // ==================== ADMIN ENDPOINTS (Role = 'admin' Required) ====================

@@ -13,17 +13,19 @@ import { authService } from "./services/authService.js";
 import { NovelController } from "./controllers/novelController.js";
 import { TranslatorController } from "./controllers/translatorController.js";
 import { AudioController } from "./controllers/audioController.js";
+import { SttController } from "./controllers/sttController.js";
 
 class NovelStudioApp {
   constructor() {
-    this.currentWorkspace = "novel"; // "novel" | "translator" | "audio"
+    this.currentWorkspace = "novel"; // "novel" | "translator" | "audio" | "stt"
     this.adminUsers = [];
     this.adminStories = [];
 
-    // Khởi tạo 3 Controller chuyên trách cho 3 Tab
+    // Khởi tạo 4 Controller chuyên trách cho 4 Tab
     this.novelController = new NovelController(this);
     this.translatorController = new TranslatorController(this);
     this.audioController = new AudioController(this);
+    this.sttController = new SttController(this);
 
     this.init();
   }
@@ -38,6 +40,7 @@ class NovelStudioApp {
     this.novelController.init();
     this.translatorController.init();
     await this.audioController.init();
+    this.sttController.init();
     await this.initAuth();
 
     // Định kỳ cập nhật thanh RPM & đồng hồ đếm ngược reset ngày mỗi 4 giây
@@ -59,17 +62,22 @@ class NovelStudioApp {
     const tabNovel = document.getElementById("tabNavNovelStudio");
     const tabTrans = document.getElementById("tabNavTranslator");
     const tabAudio = document.getElementById("tabNavAudioStudio");
+    const tabStt = document.getElementById("tabNavSttStudio");
+
     const novelWorkspace = document.getElementById("novelStudioWorkspace");
     const transWorkspace = document.getElementById("translatorStudioWorkspace");
     const audioWorkspace = document.getElementById("audioStudioWorkspace");
+    const sttWorkspace = document.getElementById("sttStudioWorkspace");
 
     if (tabNovel) tabNovel.classList.toggle("active", workspaceName === "novel");
     if (tabTrans) tabTrans.classList.toggle("active", workspaceName === "translator");
     if (tabAudio) tabAudio.classList.toggle("active", workspaceName === "audio");
+    if (tabStt) tabStt.classList.toggle("active", workspaceName === "stt");
 
     if (novelWorkspace) novelWorkspace.style.display = workspaceName === "novel" ? "block" : "none";
     if (transWorkspace) transWorkspace.style.display = workspaceName === "translator" ? "block" : "none";
     if (audioWorkspace) audioWorkspace.style.display = workspaceName === "audio" ? "block" : "none";
+    if (sttWorkspace) sttWorkspace.style.display = workspaceName === "stt" ? "block" : "none";
 
     if (workspaceName === "translator") {
       this.translatorController.updateTransEstimate();
@@ -1025,10 +1033,12 @@ class NovelStudioApp {
     const tabNovel = document.getElementById("tabNavNovelStudio");
     const tabTrans = document.getElementById("tabNavTranslator");
     const tabAudio = document.getElementById("tabNavAudioStudio");
+    const tabStt = document.getElementById("tabNavSttStudio");
 
     if (tabNovel) tabNovel.addEventListener("click", () => this.switchWorkspace("novel"));
     if (tabTrans) tabTrans.addEventListener("click", () => this.switchWorkspace("translator"));
     if (tabAudio) tabAudio.addEventListener("click", () => this.switchWorkspace("audio"));
+    if (tabStt) tabStt.addEventListener("click", () => this.switchWorkspace("stt"));
 
     const btnHeaderAudio = document.getElementById("btnHeaderAudioPortal");
     if (btnHeaderAudio) {

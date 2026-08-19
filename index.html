@@ -96,6 +96,11 @@
         <span class="workspace-tab-title">Tạo Audio Truyện (TTS)</span>
         <span class="workspace-tab-tag">CapCut Đa Luồng Siêu Tốc</span>
       </button>
+      <button class="workspace-tab" id="tabNavSttStudio">
+        <span class="workspace-tab-icon">🎧</span>
+        <span class="workspace-tab-title">Nhận Dạng Âm Thanh (STT)</span>
+        <span class="workspace-tab-tag">Audio/Video sang Phụ Đề & Chữ</span>
+      </button>
     </div>
 
     <!-- ==================== WORKSPACE: NOVEL STUDIO ==================== -->
@@ -825,6 +830,196 @@
       </div>
 
     </div> <!-- /audioStudioWorkspace -->
+
+    <!-- ==================== WORKSPACE: STT STUDIO (SPEECH-TO-TEXT) ==================== -->
+    <div id="sttStudioWorkspace" class="workspace-view" style="display: none;">
+      
+      <!-- Top Card: File Upload & Recognition Settings -->
+      <div class="studio-card" style="margin-bottom: 20px;">
+        <div class="card-header-row" style="margin-bottom: 12px;">
+          <div class="card-title">
+            <span>🎧</span> Nhận Dạng Giọng Nói & Trích Xuất Phụ Đề (CapCut Cloud STT):
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <span class="badge badge-cyan" id="sttFeatureBadge">Nhận diện đa ngôn ngữ • Xuất .SRT & Text</span>
+          </div>
+        </div>
+
+        <div class="audio-config-grid">
+          
+          <!-- Column 1: Language Selection -->
+          <div class="audio-config-col">
+            <label class="param-label">1. Ngôn Ngữ Gốc Trong File:</label>
+            <div class="audio-lang-chips" id="sttLangChips">
+              <button type="button" class="btn-style-chip active" data-lang="vi-VN">🇻🇳 Tiếng Việt</button>
+              <button type="button" class="btn-style-chip" data-lang="zh-CN">🇨🇳 中文 (Trung)</button>
+              <button type="button" class="btn-style-chip" data-lang="en-US">🇬🇧 English</button>
+              <button type="button" class="btn-style-chip" data-lang="ja-JP">🇯🇵 日本語 (Nhật)</button>
+              <button type="button" class="btn-style-chip" data-lang="ko-KR">🇰🇷 한국어 (Hàn)</button>
+              <button type="button" class="btn-style-chip" data-lang="th-TH">🇹🇭 ไทย (Thái)</button>
+              <button type="button" class="btn-style-chip" data-lang="zh-HK">🇭🇰 粤语 (Quảng)</button>
+            </div>
+          </div>
+
+          <!-- Column 2: Translation Option -->
+          <div class="audio-config-col">
+            <label class="param-label">2. Tùy Chọn Dịch Phụ Đề Tự Động:</label>
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 4px;">
+              <label class="stt-checkbox-label">
+                <input type="checkbox" id="chkSttTranslate">
+                <span>🌐 Tự động dịch phụ đề sang ngôn ngữ khác</span>
+              </label>
+              
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 12px; color: var(--text-dim);">Dịch sang:</span>
+                <select id="sttTargetLangSelect" class="param-select" style="flex: 1; height: 38px;" disabled>
+                  <option value="vi-VN" selected>🇻🇳 Tiếng Việt (vi-VN)</option>
+                  <option value="en-US">🇬🇧 Tiếng Anh (en-US)</option>
+                  <option value="zh-CN">🇨🇳 Tiếng Trung (zh-CN)</option>
+                  <option value="ja-JP">🇯🇵 Tiếng Nhật (ja-JP)</option>
+                  <option value="ko-KR">🇰🇷 Tiếng Hàn (ko-KR)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Column 3: File Input & Quick Dropzone Area -->
+          <div class="audio-config-col">
+            <label class="param-label">3. Chọn File Âm Thanh / Video:</label>
+            <input type="file" id="sttFileInput" accept=".mp3,.m4a,.mp4,.wav,.aac,.flac,.ogg,.webm,.mkv,audio/*,video/*" style="display: none;">
+            
+            <div id="sttDropZone" class="stt-dropzone">
+              <div id="sttDropPrompt">
+                <div style="font-size: 24px; margin-bottom: 4px;">📁</div>
+                <div style="font-weight: 600; font-size: 13px;">Kéo thả tệp vào đây hoặc bấm để chọn</div>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">Hỗ trợ .MP3, .M4A, .MP4, .WAV, .FLAC, .AAC (Tối đa 120MB)</div>
+              </div>
+              
+              <div id="sttSelectedFileCard" class="stt-selected-file-card" style="display: none;">
+                <div style="font-size: 26px;">🎵</div>
+                <div style="flex: 1; text-align: left; overflow: hidden;">
+                  <div id="sttFileName" style="font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">audio.mp3</div>
+                  <div id="sttFileSize" style="font-size: 11px; color: var(--accent-cyan); margin-top: 2px;">0 MB</div>
+                </div>
+                <button type="button" id="btnSttRemoveFile" class="btn btn-secondary btn-xs" title="Đổi file khác">🔄 Đổi</button>
+              </div>
+            </div>
+
+            <audio id="sttAudioPlayer" controls style="width: 100%; margin-top: 8px; display: none; height: 32px;"></audio>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Action & Progress Bar Card -->
+      <div class="studio-card" style="margin-bottom: 20px;">
+        <div class="trans-actions-row">
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <button id="btnSttStartTranscribe" class="btn btn-primary btn-lg btn-glow-cyan" disabled>
+              <span>⚡</span> Bắt Đầu Nhận Dạng (STT)
+            </button>
+            <button id="btnSttCancel" class="btn btn-danger btn-lg" style="display: none;">
+              <span>⏹️</span> Hủy Bỏ
+            </button>
+            <button id="btnSttSelectFile" class="btn btn-secondary btn-lg">
+              <span>📁</span> Chọn File Âm Thanh
+            </button>
+          </div>
+
+          <div style="font-size: 12px; color: #94a3b8;">
+            🚀 CapCut VOD & ASR AI: Nhận diện chính xác từng mili-giây • Trích xuất Timeline phụ đề chuẩn
+          </div>
+        </div>
+
+        <!-- Live Progress Section -->
+        <div id="sttProgressSection" style="display: none; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+          <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; margin-bottom: 8px;">
+            <span id="sttProgressStatusText" style="color: var(--accent-cyan);">Đang tải file lên CapCut Cloud...</span>
+            <span id="sttProgressPercent" style="color: var(--accent-pink);">10%</span>
+          </div>
+          <div class="progress-bar-bg" style="height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden;">
+            <div id="sttProgressBar" style="width: 10%; height: 100%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-pink)); transition: width 0.3s ease;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Result Card -->
+      <div id="sttResultSection" class="studio-card" style="display: none;">
+        
+        <!-- Header Row with Stats & Sub-tabs -->
+        <div class="card-header-row" style="margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <div class="card-title">
+              <span>📝</span> Kết Quả Nhận Dạng:
+            </div>
+            <span class="badge badge-purple" id="sttStatSentences">0 câu</span>
+            <span class="badge badge-cyan" id="sttStatWords">0 từ</span>
+            <span class="badge badge-emerald" id="sttStatDuration">00:00</span>
+          </div>
+
+          <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            <!-- Sub-tab buttons -->
+            <div class="stt-result-nav-tabs">
+              <button id="btnSttTabTimeline" class="stt-subtab-btn active">
+                <span>⏱️</span> Phụ Đề & Timeline
+              </button>
+              <button id="btnSttTabFullText" class="stt-subtab-btn">
+                <span>📄</span> Toàn Văn Bản
+              </button>
+              <button id="btnSttTabRawSrt" class="stt-subtab-btn">
+                <span>📜</span> Mã Nguồn .SRT
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- View 1: Timeline Cards -->
+        <div id="sttTimelineView" class="stt-subview">
+          <div id="sttTimelineContainer" class="stt-timeline-list">
+            <!-- Dynamically populated timeline cue cards -->
+          </div>
+        </div>
+
+        <!-- View 2: Full Text Area -->
+        <div id="sttFullTextView" class="stt-subview" style="display: none;">
+          <textarea id="sttFullTextOutput" class="trans-textarea" style="height: 380px; font-size: 14px; line-height: 1.7;" placeholder="Toàn bộ nội dung văn bản nhận diện được..."></textarea>
+        </div>
+
+        <!-- View 3: Raw SRT Area -->
+        <div id="sttRawSrtView" class="stt-subview" style="display: none;">
+          <textarea id="sttRawSrtOutput" class="trans-textarea" style="height: 380px; font-family: monospace; font-size: 13px; line-height: 1.6;" placeholder="Mã nguồn phụ đề SRT chuẩn..."></textarea>
+        </div>
+
+        <!-- Action Bar: Export & Pipelines -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button id="btnSttDownloadSrt" class="btn btn-secondary btn-md" title="Tải xuống tệp phụ đề .SRT chuẩn">
+              <span>📥</span> Tải File .SRT
+            </button>
+            <button id="btnSttDownloadTxt" class="btn btn-secondary btn-md" title="Tải xuống toàn văn bản .TXT">
+              <span>📥</span> Tải File .TXT
+            </button>
+            <button id="btnSttCopyResult" class="btn btn-secondary btn-md" title="Sao chép kết quả">
+              <span>📋</span> Sao Chép
+            </button>
+          </div>
+
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <button id="btnSttSendToTranslator" class="btn btn-secondary btn-md btn-glow-purple" title="Gửi toàn bộ phụ đề SRT sang Tab Dịch Thuật để dịch bằng AI Gemini">
+              <span>🌐</span> Gửi Sang Dịch Thuật Studio ➔
+            </button>
+            <button id="btnSttSendToNovel" class="btn btn-secondary btn-md" title="Lấy văn bản làm ý tưởng cốt truyện cho Tab Sáng Tác Tiểu Thuyết">
+              <span>🎬</span> Lấy Làm Ý Tưởng Sáng Tác ➔
+            </button>
+            <button id="btnSttSendToAudio" class="btn btn-secondary btn-md" title="Nạp văn bản vào Tab Tạo Audio Truyện (TTS)">
+              <span>🎙️</span> Gửi Sang Tạo Audio (TTS) ➔
+            </button>
+          </div>
+        </div>
+
+      </div> <!-- /sttResultSection -->
+
+    </div> <!-- /sttStudioWorkspace -->
 
   </div>
 

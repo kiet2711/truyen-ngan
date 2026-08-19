@@ -1,48 +1,43 @@
-import { TROPE_CATEGORIES, ALL_TROPES, getRandomTropes, getRandomSamplePremise } from "./data/tagPools.js";
-import { normalizeTextForAudio } from "./data/numberToWordsVi.js";
+/**
+ * AI Novel Studio - Main Application Coordinator & Router
+ * Điều phối 3 Không gian làm việc chính:
+ * 1. novelController     -> 🎬 Sáng Tác Tiểu Thuyết (4 Bước Kịch Bản)
+ * 2. translatorController -> 🌐 Dịch Thuật Studio (Tiểu Thuyết Raw & Phụ Đề .SRT)
+ * 3. audioController      -> 🎙️ Tạo Audio Truyện (CapCut TTS Studio Đa Luồng)
+ */
+
 import { geminiService } from "./services/geminiService.js";
 import { storageService } from "./services/storageService.js";
 import { authService } from "./services/authService.js";
-import { translatorService } from "./services/translatorService.js";
-import { audioTtsService } from "./services/audioTtsService.js";
+
+import { NovelController } from "./controllers/novelController.js";
+import { TranslatorController } from "./controllers/translatorController.js";
+import { AudioController } from "./controllers/audioController.js";
 
 class NovelStudioApp {
   constructor() {
-    this.currentStep = 1;
     this.currentWorkspace = "novel"; // "novel" | "translator" | "audio"
-    this.transMode = "srt"; // "srt" | "novel"
-    this.transParsedSrt = [];
-    this.transRawText = "";
-    this.transTranslatedText = "";
-
-    this.audioVoices = [];
-    this.currentAudioBlob = null;
-    this.selectedAudioVoice = "BV074_streaming";
-    this.selectedAudioLang = "vi-VN";
-
-    this.customTags = storageService.getCustomTags();
-    this.selectedTags = new Set(["Zhihu style", "Vả mặt cực mạnh", "Plot twist bất ngờ", "Báo thù"]);
-    this.generatedConcepts = [];
-    this.selectedConcept = null;
-    this.currentStory = null;
-    this.isWriting = false;
-    this.isPaused = false;
-    this.isAudioCleaned = false;
-    this.audioRemoveTitles = true;
-    this.audioSingleParagraph = false;
     this.adminUsers = [];
+
+    // Khởi tạo 3 Controller chuyên trách cho 3 Tab
+    this.novelController = new NovelController(this);
+    this.translatorController = new TranslatorController(this);
+    this.audioController = new AudioController(this);
 
     this.init();
   }
 
   async init() {
-    this.bindEvents();
+    this.bindGlobalEvents();
     this.updateApiKeyStatus();
     this.updateQuotaDisplay();
     this.updateSavedCount();
-    this.renderTropeCloud();
+
+    // Khởi tạo các controllers con
+    this.novelController.init();
+    this.translatorController.init();
+    await this.audioController.init();
     await this.initAuth();
-    await this.initAudioStudio();
 
     // Định kỳ cập nhật thanh RPM & đồng hồ đếm ngược reset ngày mỗi 4 giây
     setInterval(() => {
@@ -55,10 +50,72 @@ class NovelStudioApp {
     });
   }
 
-  // ==================== UI HELPERS & NOTIFICATIONS ====================
+  // ==================== WORKSPACE SWITCHER ====================
+
+  switchWorkspace(workspaceName) {
+    this.currentWorkspace = workspaceName;
+
+    const tabNovel = document.getElementById("tabNavNovelStudio");
+    const tabTrans = document.getElementById("tabNavTranslator");
+    const tabAudio = document.getElementById("tabNavAudioStudio");
+    const novelWorkspace = document.getElementById("novelStudioWorkspace");
+    const transWorkspace = document.getElementById("translatorStudioWorkspace");
+    const audioWorkspace = document.getElementById("audioStudioWorkspace");
+
+    if (tabNovel) tabNovel.classList.toggle("active", workspaceName === "novel");
+    if (tabTrans) tabTrans.classList.toggle("active", workspaceName === "translator");
+    if (tabAudio) tabAudio.classList.toggle("active", workspaceName === "audio");
+
+    if (novelWorkspace) novelWorkspace.style.display = workspaceName === "novel" ? "block" : "none";
+    if (transWorkspace) transWorkspace.style.display = workspaceName === "translator" ? "block" : "none";
+    if (audioWorkspace) audioWorkspace.style.display = workspaceName === "audio" ? "block" : "none";
+
+    if (workspaceName === "translator") {
+      this.translatorController.updateTransEstimate();
+    } else if (workspaceName === "audio") {
+      this.audioController.onAudioTextChanged();
+    }
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // ==================== CROSS-TAB PIPELINES (1-CLICK WORKFLOWS) ====================
+
+  sendStoryToAudioStudio() {
+    const cleanText = this.novelController.buildCleanAudioText();
+    if (!cleanText || !cleanText.trim()) {
+      this.showToast("Chưa có nội dung truyện để gửi sang Audio!", "warning");
+      return;
+    }
+    this.switchWorkspace("audio");
+    const audioInput = document.getElementById("audioTextInput");
+    if (audioInput) {
+      audioInput.value = cleanText;
+      this.audioController.onAudioTextChanged();
+    }
+    this.showToast(`Đã nạp toàn bộ truyện "${this.novelController.currentStory?.title || 'Truyện'}" vào Tab Tạo Audio! ✨`, "success");
+  }
+
+  sendTranslatedToAudio() {
+    const text = document.getElementById("transResultOutput")?.value || "";
+    if (!text || !text.trim()) {
+      this.showToast("Chưa có bản dịch để gửi sang Audio!", "warning");
+      return;
+    }
+    this.switchWorkspace("audio");
+    const audioInput = document.getElementById("audioTextInput");
+    if (audioInput) {
+      audioInput.value = text;
+      this.audioController.onAudioTextChanged();
+    }
+    this.showToast("Đã nạp bản dịch vào Tab Tạo Audio! ✨", "success");
+  }
+
+  // ==================== GLOBAL UI HELPERS ====================
 
   showToast(message, type = "info") {
     const container = document.getElementById("toastContainer");
+    if (!container) return;
     const toast = document.createElement("div");
     toast.className = `toast ${type}`;
     toast.textContent = message;
@@ -81,6 +138,18 @@ class NovelStudioApp {
     return num.toLocaleString("vi-VN");
   }
 
+  triggerDownload(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   updateApiKeyStatus() {
     const keys = storageService.getApiKeys();
     const badge = document.getElementById("apiKeyStatusBadge");
@@ -88,13 +157,15 @@ class NovelStudioApp {
     const activeInfo = geminiService.getCurrentActiveKeyInfo();
 
     if (keys.length > 0) {
-      badge.className = "badge badge-emerald";
-      text.textContent = keys.length > 1
-        ? `${keys.length} API Keys (Đang dùng Key #${activeInfo?.index || 1})`
-        : `1 API Key sẵn sàng`;
+      if (badge) badge.className = "badge badge-emerald";
+      if (text) {
+        text.textContent = keys.length > 1
+          ? `${keys.length} API Keys (Đang dùng Key #${activeInfo?.index || 1})`
+          : `1 API Key sẵn sàng`;
+      }
     } else {
-      badge.className = "badge badge-purple";
-      text.textContent = "Chưa có API Key";
+      if (badge) badge.className = "badge badge-purple";
+      if (text) text.textContent = "Chưa có API Key";
     }
 
     this.updateQuotaDisplay();
@@ -108,7 +179,7 @@ class NovelStudioApp {
 
     const activeModel = stats.activeModel;
 
-    // 1. Cập nhật Header Live Badge theo Model đang chọn
+    // 1. Cập nhật Header Live Badge
     const rpmTextEl = document.getElementById("liveRpmText");
     const rpdTextEl = document.getElementById("liveRpdText");
     const tokensTextEl = document.getElementById("liveTokensText");
@@ -135,7 +206,7 @@ class NovelStudioApp {
       resetTimerEl.innerHTML = `🕒 Reset ngày sau: <strong>${stats.resetCountdown.hours}h ${stats.resetCountdown.minutes}m</strong>`;
     }
 
-    // 3. Render Bảng All Models Dashboard (Hạn mức từng model độc lập)
+    // 3. Render Bảng All Models Dashboard
     const allModelsTableBody = document.getElementById("modalAllModelsTableBody");
     if (allModelsTableBody && stats.allModels) {
       allModelsTableBody.innerHTML = stats.allModels.map(m => {
@@ -167,7 +238,7 @@ class NovelStudioApp {
       }).join("");
     }
 
-    // 4. Hiển thị bảng chi tiết từng Key (hiển thị khi có >= 1 key)
+    // 4. Hiển thị bảng chi tiết từng Key
     const perKeyContainer = document.getElementById("modalPerKeyContainer");
     const tableBody = document.getElementById("modalPerKeyTableBody");
     const activeKeyIndicator = document.getElementById("modalActiveKeyIndicator");
@@ -216,227 +287,16 @@ class NovelStudioApp {
   }
 
   async saveCurrentStory() {
-    if (!this.currentStory) return;
-    await storageService.saveStory(this.currentStory);
+    if (!this.novelController.currentStory) return;
+    await storageService.saveStory(this.novelController.currentStory);
     if (authService.isLoggedIn()) {
       try {
-        await authService.saveUserStory(this.currentStory);
+        await authService.saveUserStory(this.novelController.currentStory);
       } catch (e) {
         console.warn("Cloud story sync error:", e);
       }
     }
     await this.updateSavedCount();
-  }
-
-  // ==================== STEP NAVIGATION ====================
-
-  goToStep(stepNumber) {
-    this.currentStep = stepNumber;
-
-    for (let i = 1; i <= 4; i++) {
-      const pill = document.getElementById(`stepPill${i}`);
-      const view = document.getElementById(`step${i}View`);
-
-      if (pill) {
-        pill.classList.remove("active", "completed");
-        if (i === stepNumber) pill.classList.add("active");
-        else if (i < stepNumber) pill.classList.add("completed");
-      }
-
-      if (view) {
-        view.style.display = i === stepNumber ? "block" : "none";
-      }
-    }
-
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  // ==================== STEP 1: TROPE TAG CLOUD ====================
-
-  renderTropeCloud() {
-    const container = document.getElementById("tropeCloudContainer");
-    container.innerHTML = "";
-
-    // 1. Render Predefined Categories
-    TROPE_CATEGORIES.forEach(cat => {
-      const block = document.createElement("div");
-      block.className = "trope-category-block";
-
-      const title = document.createElement("div");
-      title.className = "trope-category-title";
-      title.textContent = cat.category;
-      block.appendChild(title);
-
-      const list = document.createElement("div");
-      list.className = "trope-tag-list";
-
-      cat.tags.forEach(tag => {
-        const pill = document.createElement("div");
-        const isActive = this.selectedTags.has(tag.name);
-        pill.className = `trope-tag-pill ${isActive ? 'active' : ''}`;
-        pill.textContent = tag.name;
-
-        pill.addEventListener("click", () => {
-          if (this.selectedTags.has(tag.name)) {
-            if (this.selectedTags.size > 1) {
-              this.selectedTags.delete(tag.name);
-              pill.classList.remove("active");
-            } else {
-              this.showToast("Cần giữ lại ít nhất 1 thẻ trope!", "warning");
-            }
-          } else {
-            this.selectedTags.add(tag.name);
-            pill.classList.add("active");
-          }
-        });
-
-        list.appendChild(pill);
-      });
-
-      block.appendChild(list);
-      container.appendChild(block);
-    });
-
-    // 2. Render User Custom Tags Block
-    const customBlock = document.createElement("div");
-    customBlock.className = "trope-category-block custom-tropes-section";
-
-    const customTitle = document.createElement("div");
-    customTitle.className = "trope-category-title";
-    customTitle.innerHTML = `<span>⭐ Thẻ Tùy Chỉnh Của Bạn</span> <span style="font-size: 11px; font-weight: normal; color: var(--text-dim);">(${this.customTags.length} thẻ)</span>`;
-    customBlock.appendChild(customTitle);
-
-    const customList = document.createElement("div");
-    customList.className = "trope-tag-list";
-
-    this.customTags.forEach(tagName => {
-      const pill = document.createElement("div");
-      const isActive = this.selectedTags.has(tagName);
-      pill.className = `trope-tag-pill custom-tag ${isActive ? 'active' : ''}`;
-
-      const textSpan = document.createElement("span");
-      textSpan.textContent = tagName;
-      pill.appendChild(textSpan);
-
-      const removeBtn = document.createElement("span");
-      removeBtn.className = "tag-remove-btn";
-      removeBtn.innerHTML = "&times;";
-      removeBtn.title = `Xóa thẻ "${tagName}"`;
-      removeBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.removeCustomTag(tagName);
-      });
-      pill.appendChild(removeBtn);
-
-      pill.addEventListener("click", () => {
-        if (this.selectedTags.has(tagName)) {
-          if (this.selectedTags.size > 1) {
-            this.selectedTags.delete(tagName);
-            pill.classList.remove("active");
-          } else {
-            this.showToast("Cần giữ lại ít nhất 1 thẻ trope!", "warning");
-          }
-        } else {
-          this.selectedTags.add(tagName);
-          pill.classList.add("active");
-        }
-      });
-
-      customList.appendChild(pill);
-    });
-
-    // Quick add pill button
-    const addPill = document.createElement("div");
-    addPill.className = "trope-tag-pill add-tag-pill";
-    addPill.innerHTML = `<span>➕ Nhập Thẻ Mới...</span>`;
-    addPill.title = "Bấm để mở khung tự nhập thẻ trope tùy chỉnh";
-    addPill.addEventListener("click", () => {
-      this.toggleCustomTagPanel(true);
-    });
-    customList.appendChild(addPill);
-
-    customBlock.appendChild(customList);
-    container.appendChild(customBlock);
-  }
-
-  toggleCustomTagPanel(show) {
-    const panel = document.getElementById("customTagInputPanel");
-    const input = document.getElementById("customTagInput");
-    if (!panel) return;
-
-    const isCurrentlyVisible = panel.style.display !== "none";
-    const shouldShow = show !== undefined ? show : !isCurrentlyVisible;
-
-    if (shouldShow) {
-      panel.style.display = "block";
-      if (input) {
-        input.focus();
-        input.select();
-      }
-      panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    } else {
-      panel.style.display = "none";
-      if (input) input.value = "";
-    }
-  }
-
-  async addCustomTag(rawInput) {
-    if (!rawInput || !rawInput.trim()) {
-      this.showToast("Vui lòng nhập tên thẻ trope!", "warning");
-      return;
-    }
-
-    const rawTags = rawInput
-      .split(/[,;\n]+/)
-      .map(t => t.trim())
-      .filter(t => t.length > 0);
-
-    if (rawTags.length === 0) {
-      this.showToast("Vui lòng nhập tên thẻ hợp lệ!", "warning");
-      return;
-    }
-
-    let addedCount = 0;
-    rawTags.forEach(tag => {
-      if (!this.customTags.includes(tag)) {
-        this.customTags.push(tag);
-        addedCount++;
-      }
-      this.selectedTags.add(tag);
-    });
-
-    storageService.saveCustomTags(this.customTags);
-    if (authService.isLoggedIn()) {
-      await authService.saveUserTags(this.customTags);
-    }
-    this.renderTropeCloud();
-
-    const input = document.getElementById("customTagInput");
-    if (input) input.value = "";
-
-    if (addedCount > 0) {
-      this.showToast(`Đã thêm ${addedCount} thẻ mới và tự động kích hoạt!`, "success");
-    } else {
-      this.showToast(`Các thẻ đã được kích hoạt!`, "info");
-    }
-  }
-
-  async removeCustomTag(tagName) {
-    this.customTags = this.customTags.filter(t => t !== tagName);
-    this.selectedTags.delete(tagName);
-    storageService.saveCustomTags(this.customTags);
-    if (authService.isLoggedIn()) {
-      await authService.deleteUserTag(tagName);
-    }
-    this.renderTropeCloud();
-    this.showToast(`Đã xóa thẻ: "${tagName}"`, "info");
-  }
-
-  applyRandomTropes() {
-    const randomTags = getRandomTropes(4);
-    this.selectedTags = new Set(randomTags);
-    this.renderTropeCloud();
-    this.showToast(`Đã chọn ngẫu nhiên: ${randomTags.join(", ")}`, "info");
   }
 
   // ==================== AUTHENTICATION & USER MANAGEMENT ====================
@@ -448,1816 +308,287 @@ class NovelStudioApp {
       const user = await authService.init();
       if (user) {
         // Load cloud custom tags
-        const cloudTags = await authService.fetchUserTags();
-        if (cloudTags && Array.isArray(cloudTags)) {
-          this.customTags = cloudTags;
-          storageService.saveCustomTags(this.customTags);
-          this.renderTropeCloud();
+        const cloudTags = await authService.getUserTags();
+        if (cloudTags && cloudTags.length > 0) {
+          this.novelController.customTags = cloudTags;
+          storageService.saveCustomTags(cloudTags);
+          this.novelController.renderTropeCloud();
         }
 
-        // Load cloud API settings & keys
-        await this.syncUserApiSettingsFromCloud();
-      }
-    } catch (err) {
-      this.showToast(err.message, "error");
-    }
-  }
+        // Load cloud stories
+        const cloudStories = await authService.getUserStories();
+        if (cloudStories && cloudStories.length > 0) {
+          for (const s of cloudStories) {
+            await storageService.saveStory(s);
+          }
+          await this.updateSavedCount();
+        }
 
-  async syncUserApiSettingsFromCloud() {
-    if (!authService.isLoggedIn()) return;
-    try {
-      const cloudData = await authService.fetchUserApiSettings();
-      if (cloudData) {
-        if (Array.isArray(cloudData.api_keys) && cloudData.api_keys.length > 0) {
-          storageService.saveApiKeys(cloudData.api_keys);
+        // Load cloud API settings
+        const cloudSettings = await authService.getUserApiSettings();
+        if (cloudSettings) {
+          if (cloudSettings.keys && cloudSettings.keys.length > 0) {
+            storageService.saveApiKeys(cloudSettings.keys);
+          }
+          if (cloudSettings.settings) {
+            storageService.saveSettings(cloudSettings.settings);
+          }
+          this.updateApiKeyStatus();
         }
-        if (cloudData.settings && typeof cloudData.settings === 'object' && Object.keys(cloudData.settings).length > 0) {
-          storageService.saveSettings(cloudData.settings);
-        }
-        this.updateApiKeyStatus();
       }
     } catch (e) {
-      console.warn("Sync API settings error:", e);
+      console.warn("Auth initialization error (offline fallback mode):", e);
     }
   }
 
   renderUserHeader(user) {
-    const btnOpenAuth = document.getElementById("btnOpenAuth");
-    const userProfileWidget = document.getElementById("userProfileWidget");
-    const headerUsername = document.getElementById("headerUsername");
-    const headerUserRoleBadge = document.getElementById("headerUserRoleBadge");
-    const dropdownUsername = document.getElementById("dropdownUsername");
-    const dropdownUserEmail = document.getElementById("dropdownUserEmail");
-    const btnOpenAdminPanel = document.getElementById("btnOpenAdminPanel");
+    const userContainer = document.getElementById("headerUserSection");
+    if (!userContainer) return;
 
     if (user) {
-      if (btnOpenAuth) btnOpenAuth.style.display = "none";
-      if (userProfileWidget) userProfileWidget.style.display = "block";
+      const roleBadge = user.role === "admin" 
+        ? `<span class="badge badge-pink" style="font-size: 10px; margin-left: 4px;">👑 Quản Trị Viên</span>`
+        : `<span class="badge badge-purple" style="font-size: 10px; margin-left: 4px;">Tác Giả</span>`;
 
-      if (headerUsername) headerUsername.textContent = user.username;
-      if (dropdownUsername) dropdownUsername.textContent = user.username;
-      if (dropdownUserEmail) dropdownUserEmail.textContent = user.email;
+      userContainer.innerHTML = `
+        <div class="user-profile-badge" id="btnUserMenu" title="Tài khoản: ${user.email}">
+          <span class="user-avatar">${user.name ? user.name[0].toUpperCase() : '👤'}</span>
+          <span class="user-name">${user.name || user.username}</span>
+          ${roleBadge}
+        </div>
+      `;
 
-      if (headerUserRoleBadge) {
-        if (user.role === "admin") {
-          headerUserRoleBadge.className = "badge badge-purple role-pill";
-          headerUserRoleBadge.textContent = "👑 ADMIN";
-        } else {
-          headerUserRoleBadge.className = "badge badge-emerald role-pill";
-          headerUserRoleBadge.textContent = "MEMBER";
-        }
-      }
-
-      if (btnOpenAdminPanel) {
-        btnOpenAdminPanel.style.display = user.role === "admin" ? "flex" : "none";
-      }
+      document.getElementById("btnUserMenu")?.addEventListener("click", () => {
+        this.openUserProfileModal(user);
+      });
     } else {
-      if (btnOpenAuth) btnOpenAuth.style.display = "inline-flex";
-      if (userProfileWidget) userProfileWidget.style.display = "none";
-      const dropdown = document.getElementById("userDropdownMenu");
-      if (dropdown) dropdown.style.display = "none";
+      userContainer.innerHTML = `
+        <button class="btn btn-secondary btn-sm" id="btnHeaderLogin">
+          <span>👤</span> Đăng Nhập / Đồng Bộ Cloud
+        </button>
+      `;
+
+      document.getElementById("btnHeaderLogin")?.addEventListener("click", () => {
+        this.openAuthModal();
+      });
     }
   }
 
-  openAuthModal(tab = "login") {
+  openAuthModal(initialTab = "login") {
     const modal = document.getElementById("authModal");
-    const alertBox = document.getElementById("authAlertBox");
-    if (alertBox) {
-      alertBox.style.display = "none";
-      alertBox.textContent = "";
-    }
-    this.switchAuthTab(tab);
-    if (modal) modal.classList.add("open");
+    if (!modal) return;
+    modal.classList.add("active");
+    this.switchAuthTab(initialTab);
   }
 
   closeAuthModal() {
     const modal = document.getElementById("authModal");
-    if (modal) modal.classList.remove("open");
+    if (modal) modal.classList.remove("active");
   }
 
   switchAuthTab(tab) {
-    const tabLogin = document.getElementById("tabAuthLogin");
-    const tabRegister = document.getElementById("tabAuthRegister");
-    const formLogin = document.getElementById("loginForm");
-    const formRegister = document.getElementById("registerForm");
-    const title = document.getElementById("authModalTitle");
-    const alertBox = document.getElementById("authAlertBox");
+    const tabLogin = document.getElementById("authTabLogin");
+    const tabReg = document.getElementById("authTabRegister");
+    const formLogin = document.getElementById("authFormLogin");
+    const formReg = document.getElementById("authFormRegister");
 
-    if (alertBox) {
-      alertBox.style.display = "none";
-      alertBox.textContent = "";
-    }
-
-    if (tab === "login") {
-      tabLogin.classList.add("active");
-      tabRegister.classList.remove("active");
-      formLogin.style.display = "flex";
-      formRegister.style.display = "none";
-      if (title) title.textContent = "🔐 Đăng Nhập Tài Khoản";
-      setTimeout(() => document.getElementById("loginIdentifier")?.focus(), 100);
+    if (tab === "register") {
+      tabLogin?.classList.remove("active");
+      tabReg?.classList.add("active");
+      if (formLogin) formLogin.style.display = "none";
+      if (formReg) formReg.style.display = "block";
     } else {
-      tabLogin.classList.remove("active");
-      tabRegister.classList.add("active");
-      formLogin.style.display = "none";
-      formRegister.style.display = "flex";
-      if (title) title.textContent = "✨ Đăng Ký Tài Khoản Mới";
-      setTimeout(() => document.getElementById("regUsername")?.focus(), 100);
+      tabLogin?.classList.add("active");
+      tabReg?.classList.remove("active");
+      if (formLogin) formLogin.style.display = "block";
+      if (formReg) formReg.style.display = "none";
     }
   }
 
-  async handleLoginSubmit(e) {
-    e.preventDefault();
-    const identifier = document.getElementById("loginIdentifier").value.trim();
-    const password = document.getElementById("loginPassword").value;
-    const alertBox = document.getElementById("authAlertBox");
+  async handleLogin() {
+    const email = document.getElementById("loginEmail")?.value?.trim();
+    const pass = document.getElementById("loginPassword")?.value;
     const btn = document.getElementById("btnLoginSubmit");
-    const originText = btn.innerHTML;
+    const errEl = document.getElementById("authErrorMsg");
 
-    alertBox.style.display = "none";
-    btn.disabled = true;
-    btn.innerHTML = `<span class="typing-cursor"></span> Đang đăng nhập...`;
+    if (!email || !pass) {
+      if (errEl) errEl.textContent = "Vui lòng nhập đầy đủ email và mật khẩu!";
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<span class="typing-cursor"></span> Đang đăng nhập...`;
+    }
+    if (errEl) errEl.textContent = "";
 
     try {
-      const user = await authService.login(identifier, password);
-      this.showToast(`Chào mừng trở lại, ${user.username}! 🎉`, "success");
-      
-      // Load user cloud tags
-      const cloudTags = await authService.fetchUserTags();
-      if (cloudTags && Array.isArray(cloudTags)) {
-        this.customTags = cloudTags;
-        storageService.saveCustomTags(this.customTags);
-        this.renderTropeCloud();
-      }
-
-      // Sync cloud API keys & settings
-      await this.syncUserApiSettingsFromCloud();
-
+      const user = await authService.login(email, pass);
+      this.showToast(`Chào mừng bạn trở lại, ${user.name || user.username}! 🌟`, "success");
       this.closeAuthModal();
+      await this.initAuth();
     } catch (err) {
-      alertBox.textContent = err.message;
-      alertBox.style.display = "block";
+      if (errEl) errEl.textContent = err.message || "Đăng nhập thất bại!";
     } finally {
-      btn.disabled = false;
-      btn.innerHTML = originText;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `Đăng Nhập Ngay`;
+      }
     }
   }
 
-  async handleRegisterSubmit(e) {
-    e.preventDefault();
-    const username = document.getElementById("regUsername").value.trim();
-    const email = document.getElementById("regEmail").value.trim();
-    const password = document.getElementById("regPassword").value;
-    const confirm = document.getElementById("regPasswordConfirm").value;
-    const alertBox = document.getElementById("authAlertBox");
+  async handleRegister() {
+    const name = document.getElementById("regName")?.value?.trim();
+    const username = document.getElementById("regUsername")?.value?.trim();
+    const email = document.getElementById("regEmail")?.value?.trim();
+    const pass = document.getElementById("regPassword")?.value;
+    const passConfirm = document.getElementById("regPasswordConfirm")?.value;
     const btn = document.getElementById("btnRegisterSubmit");
-    const originText = btn.innerHTML;
+    const errEl = document.getElementById("authErrorMsg");
 
-    if (password !== confirm) {
-      alertBox.textContent = "Mật khẩu xác nhận không khớp!";
-      alertBox.style.display = "block";
+    if (!username || !email || !pass) {
+      if (errEl) errEl.textContent = "Vui lòng điền đầy đủ các thông tin bắt buộc!";
       return;
     }
 
-    alertBox.style.display = "none";
-    btn.disabled = true;
-    btn.innerHTML = `<span class="typing-cursor"></span> Đang tạo tài khoản...`;
+    if (pass !== passConfirm) {
+      if (errEl) errEl.textContent = "Mật khẩu xác nhận không khớp!";
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<span class="typing-cursor"></span> Đang tạo tài khoản...`;
+    }
+    if (errEl) errEl.textContent = "";
 
     try {
-      const user = await authService.register(username, email, password);
-      this.showToast(`Tạo tài khoản thành công! Chào mừng, ${user.username}! 🚀`, "success");
-
-      // Save any existing local tags to user's new account
-      if (this.customTags.length > 0) {
-        await authService.saveUserTags(this.customTags);
-      }
-
-      // Save existing local API settings to user's new account
-      const currentKeys = storageService.getApiKeys();
-      const currentSettings = storageService.getSettings();
-      if (currentKeys.length > 0) {
-        await authService.saveUserApiSettings(currentKeys, currentSettings);
-      }
-
+      const user = await authService.register({ username, email, password: pass, name });
+      this.showToast(`Chúc mừng ${user.name || user.username} đã đăng ký tài khoản thành công! 🎉`, "success");
       this.closeAuthModal();
+      await this.initAuth();
     } catch (err) {
-      alertBox.textContent = err.message;
-      alertBox.style.display = "block";
+      if (errEl) errEl.textContent = err.message || "Đăng ký thất bại!";
     } finally {
-      btn.disabled = false;
-      btn.innerHTML = originText;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `Hoàn Tất Đăng Ký`;
+      }
     }
   }
 
-  async handleLogout() {
-    await authService.logout();
-    this.customTags = storageService.getCustomTags();
-    this.renderTropeCloud();
-    this.showToast("Đã đăng xuất tài khoản!", "info");
-  }
+  openUserProfileModal(user) {
+    const modal = document.getElementById("userProfileModal");
+    if (!modal) return;
 
-  // ==================== ADMIN PANEL CONTROLLERS ====================
+    const nameEl = document.getElementById("profileUserName");
+    const emailEl = document.getElementById("profileUserEmail");
+    const roleEl = document.getElementById("profileUserRole");
+    const adminBtn = document.getElementById("btnOpenAdminPanel");
 
-  async openAdminModal() {
-    if (!authService.isAdmin()) {
-      this.showToast("Bạn không có quyền truy cập trang Quản trị Admin!", "error");
-      return;
+    if (nameEl) nameEl.textContent = user.name || user.username;
+    if (emailEl) emailEl.textContent = user.email;
+    if (roleEl) roleEl.textContent = user.role === "admin" ? "Quản Trị Viên Hệ Thống" : "Tác Giả";
+
+    if (adminBtn) {
+      adminBtn.style.display = user.role === "admin" ? "inline-flex" : "none";
     }
 
-    document.getElementById("adminModal").classList.add("open");
-    await this.loadAdminData();
+    modal.classList.add("active");
   }
 
-  closeAdminModal() {
-    document.getElementById("adminModal").classList.remove("open");
+  closeUserProfileModal() {
+    const modal = document.getElementById("userProfileModal");
+    if (modal) modal.classList.remove("active");
   }
 
-  switchAdminTab(tab) {
-    const tabUsers = document.getElementById("tabAdminUsers");
-    const tabStories = document.getElementById("tabAdminStories");
-    const viewUsers = document.getElementById("adminViewUsers");
-    const viewStories = document.getElementById("adminViewStories");
-
-    if (tab === "stories") {
-      tabUsers?.classList.remove("active");
-      tabStories?.classList.add("active");
-      if (viewUsers) viewUsers.style.display = "none";
-      if (viewStories) viewStories.style.display = "block";
-    } else {
-      tabUsers?.classList.add("active");
-      tabStories?.classList.remove("active");
-      if (viewUsers) viewUsers.style.display = "block";
-      if (viewStories) viewStories.style.display = "none";
-    }
+  async openAdminPanelModal() {
+    this.closeUserProfileModal();
+    const modal = document.getElementById("adminPanelModal");
+    if (!modal) return;
+    modal.classList.add("active");
+    await this.loadAdminUsersList();
   }
 
-  async loadAdminData() {
-    const tableBody = document.getElementById("adminUsersTableBody");
-    const storiesContainer = document.getElementById("adminStoriesListContainer");
-    if (tableBody) tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 24px;"><span class="typing-cursor"></span> Đang tải dữ liệu từ Neon DB...</td></tr>`;
-    if (storiesContainer) storiesContainer.innerHTML = `<div style="text-align: center; padding: 24px; color: var(--text-dim);"><span class="typing-cursor"></span> Đang tải danh sách truyện...</div>`;
+  closeAdminPanelModal() {
+    const modal = document.getElementById("adminPanelModal");
+    if (modal) modal.classList.remove("active");
+  }
+
+  async loadAdminUsersList() {
+    const tbody = document.getElementById("adminUserTableBody");
+    if (!tbody) return;
+
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-dim);"><span class="typing-cursor"></span> Đang tải danh sách người dùng từ Neon DB...</td></tr>`;
 
     try {
-      const stats = await authService.adminGetStats();
-      if (stats) {
-        document.getElementById("statTotalUsers").textContent = stats.totalUsers || 0;
-        document.getElementById("statActiveUsers").textContent = stats.activeUsers || 0;
-        document.getElementById("statBannedUsers").textContent = stats.bannedUsers || 0;
-        document.getElementById("statTotalStories").textContent = stats.totalStories || 0;
-      }
-
-      // Load Users & Stories
-      this.adminUsers = await authService.adminGetUsers();
-      this.adminStories = await authService.adminGetAllStories();
-
-      const totalStories = this.adminStories.length;
-      const totalStoriesBadge = document.getElementById("adminTotalStoryBadge");
-      if (totalStoriesBadge) totalStoriesBadge.textContent = totalStories;
-      const statTotalStories = document.getElementById("statTotalStories");
-      if (statTotalStories) statTotalStories.textContent = totalStories;
-
-      this.renderAdminUsersTable(this.adminUsers);
-      this.renderAdminStoriesList(this.adminStories);
-    } catch (err) {
-      console.error(err);
-      if (tableBody) tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--accent-rose); padding: 20px;">Lỗi tải dữ liệu: ${err.message}</td></tr>`;
-      this.showToast(`Lỗi admin: ${err.message}`, "error");
-    }
-  }
-
-  renderAdminUsersTable(users) {
-    const tableBody = document.getElementById("adminUsersTableBody");
-    if (!tableBody) return;
-    tableBody.innerHTML = "";
-
-    if (!users || users.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">Không tìm thấy người dùng nào.</td></tr>`;
-      return;
-    }
-
-    users.forEach(user => {
-      const tr = document.createElement("tr");
-
-      const isCurrentLoggedIn = authService.currentUser?.id === user.id;
-      const isAdminUser = user.role === "admin";
-      const isBanned = Boolean(user.is_banned);
-      const storyCount = user.story_count || 0;
-
-      tr.innerHTML = `
-        <td style="color: var(--text-dim); font-size: 11px;">#${user.id}</td>
-        <td>
-          <div style="font-weight: 700; color: #fff;">${user.username} ${isCurrentLoggedIn ? '<span style="font-size: 10px; color: var(--accent-pink);">(Bạn)</span>' : ''}</div>
-          <div style="font-size: 11px; color: var(--text-dim);">Tạo: ${new Date(user.created_at).toLocaleDateString("vi-VN")}</div>
-        </td>
-        <td style="color: var(--text-muted); font-size: 12px;">${user.email}</td>
-        <td>
-          <span class="${isAdminUser ? 'badge-role-admin' : 'badge-role-user'}">${isAdminUser ? '👑 ADMIN' : 'MEMBER'}</span>
-        </td>
-        <td style="font-weight: 600; color: #f472b6;">${user.custom_tag_count || 0} thẻ</td>
-        <td>
-          <button class="btn-action-xs btn-action-role btn-view-user-stories" data-id="${user.id}" data-username="${user.username}" title="Xem và đọc tất cả truyện của người dùng này">
-            📖 ${storyCount} truyện
-          </button>
-        </td>
-        <td>
-          <span class="${isBanned ? 'badge-status-banned' : 'badge-status-active'}">
-            ${isBanned ? '🚫 ĐÃ KHÓA' : '🟢 HOẠT ĐỘNG'}
-          </span>
-        </td>
-        <td style="text-align: right;">
-          <div class="admin-actions-cell">
-            ${!isAdminUser ? `
-              <button class="btn-action-xs ${isBanned ? 'btn-action-unban' : 'btn-action-ban'} btn-toggle-ban" data-id="${user.id}" data-banned="${isBanned}">
-                ${isBanned ? '✅ Mở Khóa' : '🚫 Khóa Nick'}
-              </button>
-              <button class="btn-action-xs btn-action-role btn-toggle-role" data-id="${user.id}" data-role="${user.role}">
-                ${user.role === 'admin' ? 'Hạ Quyền' : '⭐ Lên Admin'}
-              </button>
-              <button class="btn-action-xs btn-action-delete btn-delete-user" data-id="${user.id}" data-username="${user.username}" title="Xóa tài khoản">
-                🗑️
-              </button>
-            ` : `<span style="font-size: 11px; color: var(--text-dim); font-style: italic;">Admin gốc</span>`}
-          </div>
-        </td>
-      `;
-
-      // Event: View User Stories
-      const viewStoriesBtn = tr.querySelector(".btn-view-user-stories");
-      if (viewStoriesBtn) {
-        viewStoriesBtn.addEventListener("click", () => {
-          this.filterAdminStoriesByAuthor(user.id, user.username);
-        });
-      }
-
-      // Event: Toggle Ban
-      const banBtn = tr.querySelector(".btn-toggle-ban");
-      if (banBtn) {
-        banBtn.addEventListener("click", async () => {
-          const targetBan = !isBanned;
-          const confirmMsg = targetBan 
-            ? `Bạn có chắc chắn muốn KHÓA (Ban) tài khoản "${user.username}" không? Người này sẽ không thể đăng nhập được nữa.`
-            : `Mở khóa tài khoản "${user.username}"?`;
-          
-          if (confirm(confirmMsg)) {
-            try {
-              await authService.adminSetBan(user.id, targetBan);
-              this.showToast(`Đã ${targetBan ? 'khóa' : 'mở khóa'} tài khoản "${user.username}" thành công!`, "success");
-              await this.loadAdminData();
-            } catch (err) {
-              this.showToast(err.message, "error");
-            }
-          }
-        });
-      }
-
-      // Event: Toggle Role
-      const roleBtn = tr.querySelector(".btn-toggle-role");
-      if (roleBtn) {
-        roleBtn.addEventListener("click", async () => {
-          const newRole = user.role === "admin" ? "user" : "admin";
-          if (confirm(`Bạn có muốn đổi vai trò của "${user.username}" thành "${newRole.toUpperCase()}"?`)) {
-            try {
-              await authService.adminSetRole(user.id, newRole);
-              this.showToast(`Đã cập nhật vai trò "${user.username}" thành ${newRole}!`, "success");
-              await this.loadAdminData();
-            } catch (err) {
-              this.showToast(err.message, "error");
-            }
-          }
-        });
-      }
-
-      // Event: Delete User
-      const delBtn = tr.querySelector(".btn-delete-user");
-      if (delBtn) {
-        delBtn.addEventListener("click", async () => {
-          if (confirm(`CẢNH BÁO: Bạn có chắc chắn muốn XÓA VĨNH VIỄN tài khoản "${user.username}" và toàn bộ dữ liệu của người này không?`)) {
-            try {
-              await authService.adminDeleteUser(user.id);
-              this.showToast(`Đã xóa tài khoản "${user.username}"!`, "success");
-              await this.loadAdminData();
-            } catch (err) {
-              this.showToast(err.message, "error");
-            }
-          }
-        });
-      }
-
-      tableBody.appendChild(tr);
-    });
-  }
-
-  renderAdminStoriesList(stories) {
-    const container = document.getElementById("adminStoriesListContainer");
-    if (!container) return;
-    container.innerHTML = "";
-
-    if (!stories || stories.length === 0) {
-      container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 32px;">Chưa có bộ truyện nào trong hệ thống.</div>`;
-      return;
-    }
-
-    stories.forEach(item => {
-      const storyData = item.story || item;
-      const card = document.createElement("div");
-      card.className = "studio-card";
-      card.style.padding = "16px";
-      card.style.background = "#131b2e";
-      card.style.border = "1px solid rgba(255, 255, 255, 0.08)";
-
-      const totalWords = storyData.chapters?.reduce((sum, c) => sum + (c.wordCount || 0), 0) || 0;
-      const completedCount = storyData.chapters?.filter(c => c.status === "completed").length || 0;
-      const totalChapters = storyData.chapters?.length || 0;
-      const tags = (storyData.params?.selectedTags || []).slice(0, 4).join(", ") || "Chưa gắn thẻ";
-      const author = item.author_username ? `${item.author_username} (${item.author_email || 'Thành viên'})` : "Thành viên";
-
-      card.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
-          <div style="flex: 1; min-width: 260px;">
-            <div style="font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
-              <span>📖 ${storyData.title || item.title || 'Truyện chưa đặt tên'}</span>
-            </div>
-            <div style="font-size: 12px; color: var(--accent-pink); margin-top: 4px;">
-              🏷️ ${tags} • ${completedCount}/${totalChapters} chương hoàn thành (${totalWords.toLocaleString()} từ)
-            </div>
-            <div style="display: flex; gap: 12px; font-size: 11px; color: var(--text-dim); margin-top: 6px; flex-wrap: wrap;">
-              <span>👤 <strong>Tác giả:</strong> <span style="color: #93c5fd;">${author}</span></span>
-              <span>🕒 <strong>Cập nhật:</strong> ${new Date(item.updated_at || storyData.updatedAt || Date.now()).toLocaleString("vi-VN")}</span>
-            </div>
-          </div>
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <button class="btn btn-primary btn-sm btn-admin-read-story" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none;">
-              📖 Đọc Toàn Bộ Truyện
-            </button>
-            <button class="btn btn-danger btn-sm btn-admin-del-story" title="Xóa truyện">
-              🗑️ Xóa
-            </button>
-          </div>
-        </div>
-      `;
-
-      // Event: Admin Read Story
-      card.querySelector(".btn-admin-read-story").addEventListener("click", () => {
-        this.currentStory = storyData;
-        this.closeAdminModal();
-        this.renderReaderMode();
-        this.goToStep(4);
-        this.showToast(`👑 Admin đang đọc truyện: "${storyData.title}" của ${item.author_username || 'Tác giả'}`, "info");
-      });
-
-      // Event: Admin Delete Story
-      card.querySelector(".btn-admin-del-story").addEventListener("click", async () => {
-        if (confirm(`CẢNH BÁO ADMIN: Bạn có chắc chắn muốn XÓA bộ truyện "${item.title || storyData.title}" của tác giả "${item.author_username}" khỏi hệ thống không?`)) {
-          try {
-            await authService.adminDeleteStory(item.id);
-            this.showToast(`Đã xóa truyện "${item.title || storyData.title}"!`, "success");
-            await this.loadAdminData();
-          } catch (err) {
-            this.showToast(err.message, "error");
-          }
-        }
-      });
-
-      container.appendChild(card);
-    });
-  }
-
-  filterAdminUsers(query) {
-    const q = (query || "").toLowerCase().trim();
-    if (!q) {
-      this.renderAdminUsersTable(this.adminUsers);
-      return;
-    }
-    const filtered = this.adminUsers.filter(u => 
-      (u.username || "").toLowerCase().includes(q) ||
-      (u.email || "").toLowerCase().includes(q)
-    );
-    this.renderAdminUsersTable(filtered);
-  }
-
-  filterAdminStories(query) {
-    const q = (query || "").toLowerCase().trim();
-    if (!q) {
-      this.renderAdminStoriesList(this.adminStories);
-      return;
-    }
-    const filtered = (this.adminStories || []).filter(item => {
-      const s = item.story || item;
-      const title = (s.title || item.title || "").toLowerCase();
-      const author = (item.author_username || "").toLowerCase();
-      const tags = (s.params?.selectedTags || []).join(" ").toLowerCase();
-      return title.includes(q) || author.includes(q) || tags.includes(q);
-    });
-    this.renderAdminStoriesList(filtered);
-  }
-
-  filterAdminStoriesByAuthor(userId, username) {
-    this.switchAdminTab("stories");
-    const badge = document.getElementById("adminStoriesAuthorFilterBadge");
-    const nameEl = document.getElementById("adminFilterAuthorName");
-    if (badge && nameEl) {
-      nameEl.textContent = username;
-      badge.style.display = "block";
-    }
-    const filtered = (this.adminStories || []).filter(s => s.user_id === userId);
-    this.renderAdminStoriesList(filtered);
-  }
-
-  // ==================== STEP 1.5: GENERATE 3 CONCEPTS ====================
-
-  async generateConcepts() {
-    const keys = storageService.getApiKeys();
-    if (keys.length === 0) {
-      this.openApiSettingsModal();
-      this.showToast("Vui lòng nhập ít nhất một Gemini API Key để tiếp tục!", "warning");
-      return;
-    }
-
-    const btn = document.getElementById("btnGenerateConcepts");
-    const originText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = `<span class="typing-cursor"></span> AI đang sáng tạo 3 bản bối cảnh & motif...`;
-
-    try {
-      const chapterCount = parseInt(document.getElementById("chapterCountSelect").value, 10) || 6;
-      const targetWords = parseInt(document.getElementById("wordsPerChapterSelect").value, 10) || 2000;
-      const userPremise = document.getElementById("userPremiseInput").value.trim();
-
-      const params = {
-        selectedTags: Array.from(this.selectedTags),
-        userPremise,
-        chapterCount,
-        targetWordsPerChapter: targetWords
-      };
-
-      const res = await geminiService.generateStoryConcepts(params, (msg) => {
-        btn.innerHTML = `<span class="typing-cursor"></span> ${msg}`;
-      });
-
-      this.generatedConcepts = res.concepts || [];
-      if (this.generatedConcepts.length === 0) {
-        throw new Error("Không nhận được bản đề xuất nào từ AI.");
-      }
-
-      this.selectedConcept = this.generatedConcepts[0]; // Mặc định chọn bản 1
-      this.renderConceptsGrid();
-
-      const conceptsSection = document.getElementById("conceptsSection");
-      conceptsSection.style.display = "block";
-      conceptsSection.scrollIntoView({ behavior: "smooth", block: "start" });
-      this.showToast("Đã tạo xong 3 bản đề xuất! Hãy chọn bản bạn ưng ý nhất.", "success");
-
-    } catch (err) {
-      console.error(err);
-      this.showToast(`Lỗi tạo bản đề xuất: ${err.message}`, "error");
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = originText;
-    }
-  }
-
-  renderConceptsGrid() {
-    const grid = document.getElementById("conceptsGrid");
-    grid.innerHTML = "";
-
-    this.generatedConcepts.forEach((concept, idx) => {
-      const card = document.createElement("div");
-      const isSelected = this.selectedConcept?.id === concept.id;
-      card.className = `concept-card ${isSelected ? 'selected' : ''}`;
-
-      card.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span class="concept-number-badge">BẢN ĐỀ XUẤT 0${idx + 1}</span>
-          <span style="font-size: 11px; color: var(--accent-pink);">Phim ngắn kịch tính</span>
-        </div>
-        <div class="concept-title">${concept.title}</div>
-        <div class="concept-hook">"${concept.hook}"</div>
-        <div class="concept-detail-item"><strong>🏛️ Bối cảnh & Nhân vật:</strong> ${concept.settingAndCharacters}</div>
-        <div class="concept-detail-item"><strong>⚡ Motif & Xung đột:</strong> ${concept.motifAndConflict}</div>
-        <div class="concept-detail-item"><strong>📖 Tóm tắt cốt truyện:</strong> ${concept.plotSummary}</div>
-        <div class="concept-detail-item" style="color: #f472b6;"><strong>💥 Cú Twist vả mặt:</strong> ${concept.climaxTwist}</div>
-        <div class="btn-select-concept">${isSelected ? '✓ Đang Chọn Bản Này' : 'Bấm Để Chọn Bản Này'}</div>
-      `;
-
-      card.addEventListener("click", () => {
-        this.selectedConcept = concept;
-        document.querySelectorAll(".concept-card").forEach(c => {
-          c.classList.remove("selected");
-          c.querySelector(".btn-select-concept").textContent = "Bấm Để Chọn Bản Này";
-        });
-        card.classList.add("selected");
-        card.querySelector(".btn-select-concept").textContent = "✓ Đang Chọn Bản Này";
-      });
-
-      grid.appendChild(card);
-    });
-  }
-
-  // ==================== STEP 2: CHECKPOINT 1 OUTLINE ====================
-
-  async createOutlineFromSelectedConcept() {
-    if (!this.selectedConcept) {
-      this.showToast("Vui lòng chọn 1 bản đề xuất trước khi tiếp tục!", "warning");
-      return;
-    }
-
-    const btn = document.getElementById("btnConfirmConceptAndGoToOutline");
-    const originText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = `<span class="typing-cursor"></span> Đang sinh Dàn Ý & Hồ Sơ Nhân Vật chi tiết...`;
-
-    try {
-      const chapterCount = parseInt(document.getElementById("chapterCountSelect").value, 10) || 6;
-      const targetWords = parseInt(document.getElementById("wordsPerChapterSelect").value, 10) || 2000;
-      const userPremise = document.getElementById("userPremiseInput").value.trim();
-
-      const params = {
-        chosenConcept: this.selectedConcept,
-        selectedTags: Array.from(this.selectedTags),
-        userPremise,
-        chapterCount,
-        targetWordsPerChapter: targetWords
-      };
-
-      const outlineData = await geminiService.generateOutlineFromConcept(params, (msg) => {
-        btn.innerHTML = `<span class="typing-cursor"></span> ${msg}`;
-      });
-
-      this.currentStory = {
-        id: "story_" + Date.now(),
-        title: outlineData.title || this.selectedConcept.title,
-        logline: outlineData.logline || this.selectedConcept.hook,
-        settingDescription: outlineData.settingDescription || this.selectedConcept.settingAndCharacters,
-        params: params,
-        characterBible: outlineData.characterBible || [],
-        chapters: (outlineData.chapters || []).map((ch, idx) => ({
-          index: ch.index || idx + 1,
-          title: ch.title || `Chương ${idx + 1}`,
-          summary: ch.summary || "",
-          dramaticGoal: ch.dramaticGoal || "",
-          appearingCharacters: ch.appearingCharacters || [],
-          content: "",
-          wordCount: 0,
-          status: "pending"
-        })),
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      };
-
-      await this.saveCurrentStory();
-
-      this.renderCheckpoint1();
-      this.goToStep(2);
-      this.showToast("Đã lập Dàn Ý & Bảng Nhân Vật Hán Việt thành công!", "success");
-
-    } catch (err) {
-      console.error(err);
-      this.showToast(`Lỗi tạo dàn ý: ${err.message}`, "error");
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = originText;
-    }
-  }
-
-  renderCheckpoint1() {
-    if (!this.currentStory) return;
-
-    document.getElementById("storyTitleInput").value = this.currentStory.title;
-    document.getElementById("storyLoglineInput").value = this.currentStory.logline;
-    document.getElementById("storySettingDescInput").value = this.currentStory.settingDescription;
-
-    // Character Bible
-    const charContainer = document.getElementById("storyBibleContainer");
-    charContainer.innerHTML = "";
-
-    this.currentStory.characterBible.forEach((char, idx) => {
-      const card = document.createElement("div");
-      card.className = "character-card";
-      card.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <input type="text" class="character-name-input" value="${char.name || ''}" placeholder="Tên nhân vật Hán Việt" data-idx="${idx}" data-field="name">
-          <button class="btn btn-danger btn-sm btn-del-char" data-idx="${idx}" style="padding: 2px 6px;">✕</button>
-        </div>
-        <div style="font-size: 12px; margin-bottom: 4px; color: var(--accent-pink);">
-          Thân phận: <input type="text" value="${char.role || ''}" placeholder="Thân phận thật / ngụy trang" data-idx="${idx}" data-field="role">
-        </div>
-        <div style="font-size: 12px; margin-bottom: 4px; color: var(--text-muted);">
-          Tính cách: <textarea rows="2" placeholder="Tính cách" data-idx="${idx}" data-field="personality">${char.personality || ''}</textarea>
-        </div>
-        <div style="font-size: 12px; color: var(--text-dim);">
-          Đặc điểm: <textarea rows="2" placeholder="Ngoại hình/Đặc điểm" data-idx="${idx}" data-field="traits">${char.traits || ''}</textarea>
-        </div>
-      `;
-
-      card.querySelectorAll("input, textarea").forEach(input => {
-        input.addEventListener("input", (e) => {
-          const i = parseInt(e.target.dataset.idx, 10);
-          const field = e.target.dataset.field;
-          this.currentStory.characterBible[i][field] = e.target.value;
-        });
-      });
-
-      card.querySelector(".btn-del-char").addEventListener("click", () => {
-        this.currentStory.characterBible.splice(idx, 1);
-        this.renderCheckpoint1();
-      });
-
-      charContainer.appendChild(card);
-    });
-
-    // Chapters Outline
-    const chapterList = document.getElementById("chapterOutlineList");
-    chapterList.innerHTML = "";
-    document.getElementById("totalChapterBadge").textContent = `${this.currentStory.chapters.length} Chương`;
-
-    this.currentStory.chapters.forEach((ch, idx) => {
-      const card = document.createElement("div");
-      card.className = "chapter-item-card";
-      card.innerHTML = `
-        <div class="chapter-item-header">
-          <span class="chapter-number-tag">CHƯƠNG ${ch.index}</span>
-          <input type="text" class="chapter-title-input param-input" value="${ch.title}" data-idx="${idx}" data-field="title">
-        </div>
-        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-top: 8px;">
-          <div>
-            <label class="param-label" style="font-size: 11px;">📝 Diễn biến kịch bản:</label>
-            <textarea class="param-textarea" rows="3" data-idx="${idx}" data-field="summary">${ch.summary}</textarea>
-          </div>
-          <div>
-            <label class="param-label" style="font-size: 11px;">🎯 Nút thắt / Vả mặt:</label>
-            <textarea class="param-textarea" rows="3" data-idx="${idx}" data-field="dramaticGoal">${ch.dramaticGoal}</textarea>
-          </div>
-        </div>
-        <div style="margin-top: 8px;">
-          <label class="param-label" style="font-size: 11px;">👥 Nhân vật xuất hiện:</label>
-          <input type="text" class="param-input" value="${(ch.appearingCharacters || []).join(", ")}" data-idx="${idx}" data-field="appearingCharacters" placeholder="Phân cách bằng dấu phẩy">
-        </div>
-      `;
-
-      card.querySelectorAll("input, textarea").forEach(input => {
-        input.addEventListener("input", (e) => {
-          const i = parseInt(e.target.dataset.idx, 10);
-          const field = e.target.dataset.field;
-          if (field === "appearingCharacters") {
-            this.currentStory.chapters[i].appearingCharacters = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
-          } else {
-            this.currentStory.chapters[i][field] = e.target.value;
-          }
-        });
-      });
-
-      chapterList.appendChild(card);
-    });
-  }
-
-  // ==================== STEP 3: LIVE WRITING STUDIO ====================
-
-  async startFullStoryWriting() {
-    if (!this.currentStory) return;
-
-    this.currentStory.title = document.getElementById("storyTitleInput").value.trim() || this.currentStory.title;
-    this.currentStory.logline = document.getElementById("storyLoglineInput").value.trim();
-    this.currentStory.settingDescription = document.getElementById("storySettingDescInput").value.trim();
-    await this.saveCurrentStory();
-
-    this.goToStep(3);
-    this.renderWritingMonitor();
-    this.runWritingPipeline();
-  }
-
-  renderWritingMonitor() {
-    if (!this.currentStory) return;
-
-    const list = document.getElementById("chaptersMonitorList");
-    list.innerHTML = "";
-
-    this.currentStory.chapters.forEach((ch, idx) => {
-      const row = document.createElement("div");
-      row.className = `chapter-monitor-row ${ch.status === 'writing' ? 'active' : ''} ${ch.status === 'completed' ? 'completed' : ''}`;
-      row.id = `chapterRow_${idx}`;
-
-      let statusBadge = `<span class="badge badge-purple">Chờ viết</span>`;
-      if (ch.status === "writing") statusBadge = `<span class="badge badge-cyan"><span class="typing-cursor"></span> Đang viết...</span>`;
-      if (ch.status === "completed") statusBadge = `<span class="badge badge-emerald">✓ Hoàn thành (${ch.wordCount || 0} từ)</span>`;
-      if (ch.status === "error") statusBadge = `<span class="badge btn-danger">Lỗi</span>`;
-
-      row.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 14px;">
-          <strong style="color: #ec4899; font-family: var(--font-heading); min-width: 80px;">Chương ${ch.index}</strong>
-          <div>
-            <div style="font-weight: 600; font-size: 14px;">${ch.title}</div>
-            <div style="font-size: 11px; color: var(--text-muted);">${ch.summary.slice(0, 70)}...</div>
-          </div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <div id="chapterStatusBadge_${idx}">${statusBadge}</div>
-          <button class="btn btn-secondary btn-sm btn-regen-ch" data-idx="${idx}" title="Tạo lại chương này">🔄</button>
-        </div>
-      `;
-
-      row.querySelector(".btn-regen-ch").addEventListener("click", () => {
-        this.regenerateSingleChapter(idx);
-      });
-
-      list.appendChild(row);
-    });
-
-    this.updateStats();
-  }
-
-  updateStats() {
-    if (!this.currentStory) return;
-
-    let totalWords = 0;
-    let completedCount = 0;
-
-    this.currentStory.chapters.forEach(ch => {
-      if (ch.content) {
-        const words = this.countWords(ch.content);
-        ch.wordCount = words;
-        totalWords += words;
-      }
-      if (ch.status === "completed") completedCount++;
-    });
-
-    const totalChapters = this.currentStory.chapters.length;
-    const percent = Math.round((completedCount / totalChapters) * 100);
-
-    document.getElementById("totalWordsStat").textContent = totalWords.toLocaleString();
-    document.getElementById("completedChaptersStat").textContent = `${completedCount} / ${totalChapters}`;
-    document.getElementById("progressPercentStat").textContent = `${percent}%`;
-
-    const btnGoToStep4 = document.getElementById("btnGoToStep4");
-    if (completedCount === totalChapters) {
-      btnGoToStep4.style.display = "inline-block";
-      document.getElementById("writingStatusStat").textContent = "Hoàn tất trọn bộ!";
-    }
-  }
-
-  async runWritingPipeline() {
-    this.isWriting = true;
-    this.isPaused = false;
-    document.getElementById("btnPauseResumeWriting").textContent = "⏸️ Tạm Dừng";
-
-    const settings = storageService.getSettings();
-    const delayTime = settings.delayBetweenChapters || 3500;
-
-    for (let i = 0; i < this.currentStory.chapters.length; i++) {
-      const chapter = this.currentStory.chapters[i];
-
-      if (chapter.status === "completed" && chapter.content) {
-        continue;
-      }
-
-      if (this.isPaused) {
-        document.getElementById("writingStatusStat").textContent = "Đang tạm dừng";
+      this.adminUsers = await authService.getAdminUsersList();
+      if (this.adminUsers.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-dim);">Chưa có người dùng nào</td></tr>`;
         return;
       }
 
-      chapter.status = "writing";
-      this.renderWritingMonitor();
-      document.getElementById("writingStatusStat").textContent = `Đang viết Chương ${chapter.index}`;
-      document.getElementById("activeChapterTitle").textContent = `Chương ${chapter.index}: ${chapter.title}`;
-      
-      const streamBox = document.getElementById("typingStreamContent");
-      streamBox.innerHTML = `<span class="typing-cursor"></span>`;
-
-      try {
-        const generatedText = await geminiService.generateChapterStream({
-          story: this.currentStory,
-          chapterIndex: i,
-          onChunk: (chunk, full) => {
-            streamBox.textContent = full;
-            document.getElementById("liveChapterWordCount").textContent = `${this.countWords(full)} từ`;
-          },
-          onStatus: (msg) => {
-            document.getElementById("writingStatusStat").textContent = msg;
-          }
-        });
-
-        chapter.content = generatedText;
-        chapter.wordCount = this.countWords(generatedText);
-        chapter.status = "completed";
-        
-        await this.saveCurrentStory();
-        this.renderWritingMonitor();
-
-        if (i < this.currentStory.chapters.length - 1) {
-          await this.showThrottleCountdown(delayTime);
-        }
-
-      } catch (err) {
-        console.error(err);
-        chapter.status = "error";
-        this.renderWritingMonitor();
-        this.showToast(`Lỗi khi sinh Chương ${chapter.index}: ${err.message}`, "error");
-        document.getElementById("writingStatusStat").textContent = `Lỗi ở Chương ${chapter.index}`;
-        this.isWriting = false;
-        return;
-      }
-    }
-
-    this.isWriting = false;
-    this.updateStats();
-    this.showToast("🎉 Chúc mừng! Đã hoàn thành toàn bộ tác phẩm!", "success");
-  }
-
-  async showThrottleCountdown(ms) {
-    const indicator = document.getElementById("throttleIndicator");
-    const countEl = document.getElementById("throttleCountdown");
-    indicator.style.display = "inline-flex";
-
-    let remainingSeconds = Math.ceil(ms / 1000);
-    while (remainingSeconds > 0) {
-      countEl.textContent = remainingSeconds;
-      await new Promise(r => setTimeout(r, 1000));
-      remainingSeconds--;
-    }
-
-    indicator.style.display = "none";
-  }
-
-  async regenerateSingleChapter(chapterIdx) {
-    if (this.isWriting) {
-      this.showToast("Vui lòng đợi quá trình viết hiện tại hoàn thành hoặc tạm dừng trước khi tạo lại!", "warning");
-      return;
-    }
-
-    const chapter = this.currentStory.chapters[chapterIdx];
-    chapter.status = "pending";
-    chapter.content = "";
-    chapter.wordCount = 0;
-    this.renderWritingMonitor();
-
-    this.runWritingPipeline();
-  }
-
-  // ==================== STEP 4: CHECKPOINT 2 READER & EXPORT ====================
-
-  renderReaderMode() {
-    if (!this.currentStory) return;
-
-    this.isAudioCleaned = false;
-    document.getElementById("btnRestoreOriginalText").style.display = "none";
-    document.getElementById("btnCleanForAudio").style.display = "inline-flex";
-
-    document.getElementById("readerStoryTitle").textContent = this.currentStory.title;
-    document.getElementById("readerStoryLogline").textContent = this.currentStory.logline || "";
-
-    const totalWords = this.currentStory.chapters.reduce((sum, c) => sum + (c.wordCount || 0), 0);
-    const readingMins = Math.round(totalWords / 250);
-    document.getElementById("readerTotalWords").textContent = `${totalWords.toLocaleString()} từ`;
-    document.getElementById("readerEstReadingTime").textContent = `~${readingMins} phút đọc`;
-
-    // Populate Chapter Quick Nav Dropdown
-    const chapterSelect = document.getElementById("readerChapterSelect");
-    if (chapterSelect) {
-      chapterSelect.innerHTML = `<option value="">-- Chọn chương (${this.currentStory.chapters.length} chương) --</option>`;
-      this.currentStory.chapters.forEach(ch => {
-        const opt = document.createElement("option");
-        opt.value = `readerChapter_${ch.index}`;
-        opt.textContent = `Chương ${ch.index}: ${ch.title || ""}`;
-        chapterSelect.appendChild(opt);
-      });
-    }
-
-    this.renderReaderChaptersContent();
-  }
-
-  renderReaderChaptersContent() {
-    const body = document.getElementById("readerBody");
-    body.innerHTML = "";
-
-    if (!this.currentStory || !this.currentStory.chapters) return;
-
-    // Chế độ Gom liền mạch cho Audio: Xóa tên chương, gom thành 1 luồng văn bản
-    if (this.isAudioCleaned && this.audioRemoveTitles) {
-      const mergedBlock = document.createElement("div");
-      mergedBlock.className = "reader-chapter-block reader-audio-merged-block";
-
-      const cleanText = this.getCleanAudioTxt({ removeTitles: true, singleParagraph: this.audioSingleParagraph });
-
-      const bannerHtml = `
-        <div class="audio-mode-banner">
-          <div class="audio-mode-banner-content">
-            <span class="audio-banner-icon">🎙️</span>
-            <div>
-              <strong>Chế độ Chuẩn Hóa Audio / TTS:</strong>
-              <div>Đã xóa tiêu đề truyện, tên chương và gom văn bản liền mạch sẵn sàng cho công cụ lồng tiếng AI.</div>
-            </div>
-          </div>
-          <div class="audio-banner-tags">
-            <span class="audio-tag">${this.audioSingleParagraph ? "1 Đoạn Duy Nhất" : "Liền Mạch Các Đoạn"}</span>
-            <span class="audio-tag">0 Markdown / 0 Số Thô</span>
-          </div>
-        </div>
-      `;
-
-      if (this.audioSingleParagraph) {
-        mergedBlock.innerHTML = `
-          ${bannerHtml}
-          <div class="reader-chapter-paragraphs">
-            <p class="reader-paragraph">${cleanText}</p>
-          </div>
-        `;
-      } else {
-        const paragraphs = cleanText.split("\n\n").filter(Boolean);
-        const paragraphsHtml = paragraphs.map(p => `<p class="reader-paragraph">${p}</p>`).join("");
-        mergedBlock.innerHTML = `
-          ${bannerHtml}
-          <div class="reader-chapter-paragraphs">${paragraphsHtml}</div>
-        `;
-      }
-
-      body.appendChild(mergedBlock);
-      return;
-    }
-
-    this.currentStory.chapters.forEach(ch => {
-      const chBlock = document.createElement("div");
-      chBlock.className = "reader-chapter-block";
-      chBlock.id = `readerChapter_${ch.index}`;
-
-      let textToRender = ch.content || "(Chương này chưa có nội dung)";
-      if (this.isAudioCleaned) {
-        textToRender = normalizeTextForAudio(textToRender);
-      }
-
-      const paragraphs = textToRender.split("\n\n").filter(Boolean);
-      const paragraphsHtml = paragraphs.map(p => `<p class="reader-paragraph">${p}</p>`).join("");
-
-      chBlock.innerHTML = `
-        <h2 class="reader-chapter-title">Chương ${ch.index}: ${ch.title}</h2>
-        <div class="reader-chapter-paragraphs">${paragraphsHtml}</div>
-      `;
-
-      body.appendChild(chBlock);
-    });
-  }
-
-  cleanTextForTTS() {
-    this.isAudioCleaned = true;
-    this.renderReaderChaptersContent();
-    document.getElementById("btnCleanForAudio").style.display = "none";
-    document.getElementById("btnRestoreOriginalText").style.display = "inline-flex";
-
-    const badge = document.getElementById("readerAudioStatusBadge");
-    if (badge) {
-      badge.textContent = "🎙️ Đã Chuẩn Hóa TTS";
-      badge.className = "meta-pill badge-audio-status";
-    }
-
-    this.showToast("Đã chuẩn hóa toàn bộ số, xóa tiêu đề & tên chương, gom văn bản sẵn sàng cho TTS!", "success");
-  }
-
-  restoreOriginalText() {
-    this.isAudioCleaned = false;
-    this.renderReaderChaptersContent();
-    document.getElementById("btnCleanForAudio").style.display = "inline-flex";
-    document.getElementById("btnRestoreOriginalText").style.display = "none";
-
-    const badge = document.getElementById("readerAudioStatusBadge");
-    if (badge) {
-      badge.textContent = "✨ Bản Gốc";
-      badge.className = "meta-pill";
-    }
-
-    this.showToast("Đã trả về văn bản gốc kèm phân chia chương.", "info");
-  }
-
-  downloadFile(filename, content, type = "text/plain;charset=utf-8") {
-    const blob = new Blob([content], { type });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    this.showToast(`Đã tải về file: ${filename}`, "success");
-  }
-
-  getCleanAudioTxt(options = {}) {
-    if (!this.currentStory) return "";
-
-    const removeTitles = options.removeTitles !== undefined ? options.removeTitles : this.audioRemoveTitles;
-    const singleParagraph = options.singleParagraph !== undefined ? options.singleParagraph : this.audioSingleParagraph;
-
-    const chunks = [];
-
-    // Chỉ thêm tên truyện nếu người dùng không muốn xóa tiêu đề
-    if (!removeTitles && this.currentStory.title) {
-      chunks.push(this.currentStory.title.toUpperCase());
-    }
-
-    (this.currentStory.chapters || []).forEach(ch => {
-      // Chỉ thêm tên chương nếu người dùng không muốn xóa tên chương
-      if (!removeTitles && (ch.title || ch.index)) {
-        chunks.push(`CHƯƠNG ${ch.index}. ${(ch.title || "").toUpperCase()}`.trim() + ".");
-      }
-
-      const cleaned = normalizeTextForAudio(ch.content || "");
-      if (cleaned) {
-        chunks.push(cleaned);
-      }
-    });
-
-    if (singleParagraph) {
-      // Gom tất cả thành 1 đoạn duy nhất: thay tất cả ngắt dòng thành khoảng trắng, xóa khoảng trắng thừa
-      return chunks.join(" ").replace(/\s+/g, " ").trim();
-    } else {
-      // Gom các đoạn văn liền mạch chuẩn TTS (giữ ngắt đoạn giữa các đoạn để TTS lấy hơi)
-      return chunks.join("\n\n").trim();
-    }
-  }
-
-  getFullMarkdown() {
-    if (!this.currentStory) return "";
-    let out = `# ${this.currentStory.title}\n\n`;
-    out += `> **Trope:** ${(this.currentStory.params?.selectedTags || []).join(", ")}\n`;
-    out += `> **Bối cảnh:** ${this.currentStory.settingDescription || ""}\n`;
-    out += `> **Tóm tắt kịch tính:** ${this.currentStory.logline || ""}\n\n`;
-
-    out += `## BẢNG NHÂN VẬT (STORY BIBLE)\n\n`;
-    (this.currentStory.characterBible || []).forEach(c => {
-      out += `- **${c.name}** (${c.role}): ${c.personality} - *${c.traits}*\n`;
-    });
-    out += "\n---\n\n";
-
-    this.currentStory.chapters.forEach(ch => {
-      out += `## Chương ${ch.index}: ${ch.title}\n\n`;
-      out += `${ch.content || ""}\n\n`;
-    });
-    return out.trim();
-  }
-
-  // ==================== EVENT BINDINGS ====================
-
-  bindEvents() {
-    // Auth & User Dropdown Events
-    const btnOpenAuth = document.getElementById("btnOpenAuth");
-    if (btnOpenAuth) {
-      btnOpenAuth.addEventListener("click", () => this.openAuthModal("login"));
-    }
-
-    const btnCloseAuth = document.getElementById("btnCloseAuth");
-    if (btnCloseAuth) {
-      btnCloseAuth.addEventListener("click", () => this.closeAuthModal());
-    }
-
-    const tabAuthLogin = document.getElementById("tabAuthLogin");
-    if (tabAuthLogin) {
-      tabAuthLogin.addEventListener("click", () => this.switchAuthTab("login"));
-    }
-
-    const tabAuthRegister = document.getElementById("tabAuthRegister");
-    if (tabAuthRegister) {
-      tabAuthRegister.addEventListener("click", () => this.switchAuthTab("register"));
-    }
-
-    const loginForm = document.getElementById("loginForm");
-    if (loginForm) {
-      loginForm.addEventListener("submit", (e) => this.handleLoginSubmit(e));
-    }
-
-    const registerForm = document.getElementById("registerForm");
-    if (registerForm) {
-      registerForm.addEventListener("submit", (e) => this.handleRegisterSubmit(e));
-    }
-
-    const btnUserDropdownToggle = document.getElementById("btnUserDropdownToggle");
-    const userDropdownMenu = document.getElementById("userDropdownMenu");
-    if (btnUserDropdownToggle && userDropdownMenu) {
-      btnUserDropdownToggle.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const isOpen = userDropdownMenu.style.display === "block";
-        userDropdownMenu.style.display = isOpen ? "none" : "block";
-      });
-      document.addEventListener("click", () => {
-        userDropdownMenu.style.display = "none";
-      });
-    }
-
-    const btnLogout = document.getElementById("btnLogout");
-    if (btnLogout) {
-      btnLogout.addEventListener("click", () => this.handleLogout());
-    }
-
-    // Admin Modal Events
-    const btnOpenAdminPanel = document.getElementById("btnOpenAdminPanel");
-    if (btnOpenAdminPanel) {
-      btnOpenAdminPanel.addEventListener("click", () => this.openAdminModal());
-    }
-
-    const btnCloseAdmin = document.getElementById("btnCloseAdmin");
-    if (btnCloseAdmin) {
-      btnCloseAdmin.addEventListener("click", () => this.closeAdminModal());
-    }
-
-    const tabAdminUsers = document.getElementById("tabAdminUsers");
-    if (tabAdminUsers) {
-      tabAdminUsers.addEventListener("click", () => this.switchAdminTab("users"));
-    }
-
-    const tabAdminStories = document.getElementById("tabAdminStories");
-    if (tabAdminStories) {
-      tabAdminStories.addEventListener("click", () => {
-        const badge = document.getElementById("adminStoriesAuthorFilterBadge");
-        if (badge) badge.style.display = "none";
-        this.switchAdminTab("stories");
-        this.renderAdminStoriesList(this.adminStories);
-      });
-    }
-
-    const btnRefreshAdminUsers = document.getElementById("btnRefreshAdminUsers");
-    if (btnRefreshAdminUsers) {
-      btnRefreshAdminUsers.addEventListener("click", () => this.loadAdminData());
-    }
-
-    const btnRefreshAdminStories = document.getElementById("btnRefreshAdminStories");
-    if (btnRefreshAdminStories) {
-      btnRefreshAdminStories.addEventListener("click", () => this.loadAdminData());
-    }
-
-    const adminSearchUsers = document.getElementById("adminSearchUsers");
-    if (adminSearchUsers) {
-      adminSearchUsers.addEventListener("input", (e) => this.filterAdminUsers(e.target.value));
-    }
-
-    const adminSearchStories = document.getElementById("adminSearchStories");
-    if (adminSearchStories) {
-      adminSearchStories.addEventListener("input", (e) => this.filterAdminStories(e.target.value));
-    }
-
-    const btnClearAuthorFilter = document.getElementById("btnClearAuthorFilter");
-    if (btnClearAuthorFilter) {
-      btnClearAuthorFilter.addEventListener("click", () => {
-        const badge = document.getElementById("adminStoriesAuthorFilterBadge");
-        if (badge) badge.style.display = "none";
-        this.renderAdminStoriesList(this.adminStories);
-      });
-    }
-
-    // Backdrop click & Escape to close modals
-    ["authModal", "adminModal", "apiSettingsModal", "storyLibraryModal"].forEach(id => {
-      const modal = document.getElementById(id);
-      if (modal) {
-        modal.addEventListener("click", (e) => {
-          if (e.target === modal) {
-            modal.classList.remove("open");
-          }
-        });
-      }
-    });
-
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        document.querySelectorAll(".modal-backdrop.open").forEach(m => m.classList.remove("open"));
-      }
-    });
-
-    // Header buttons
-    document.getElementById("btnOpenApiSettings").addEventListener("click", () => this.openApiSettingsModal());
-    document.getElementById("apiKeyStatusBadge").addEventListener("click", () => this.openApiSettingsModal());
-    
-    const liveQuotaBadge = document.getElementById("apiQuotaLiveBadge");
-    if (liveQuotaBadge) {
-      liveQuotaBadge.addEventListener("click", () => this.openApiSettingsModal());
-    }
-
-    const btnClearApiStats = document.getElementById("btnClearApiStats");
-    if (btnClearApiStats) {
-      btnClearApiStats.addEventListener("click", () => this.clearApiUsageStats());
-    }
-
-    document.getElementById("btnCloseApiSettings").addEventListener("click", () => this.closeApiSettingsModal());
-    document.getElementById("btnSaveApiSettings").addEventListener("click", () => this.saveApiSettings());
-    document.getElementById("btnTestApiKey").addEventListener("click", () => this.testApiKeyConnection());
-
-    const modelSelectEl = document.getElementById("modelSelect");
-    if (modelSelectEl) {
-      modelSelectEl.addEventListener("change", (e) => {
-        this.updateQuotaDisplay(e.target.value);
-      });
-    }
-
-    document.getElementById("btnOpenLibrary").addEventListener("click", () => this.openStoryLibraryModal());
-    document.getElementById("btnCloseStoryLibrary").addEventListener("click", () => this.closeStoryLibraryModal());
-    document.getElementById("librarySearchInput").addEventListener("input", (e) => this.filterLibraryStories(e.target.value));
-
-    const btnClearAll = document.getElementById("btnClearAllStories");
-    if (btnClearAll) {
-      btnClearAll.addEventListener("click", async () => {
-        const stories = await storageService.getAllStories();
-        if (stories.length === 0) {
-          this.showToast("Thư viện hiện đang trống!", "info");
-          return;
-        }
-        if (confirm(`CẢNH BÁO: Bạn có chắc chắn muốn XÓA TẤT CẢ ${stories.length} bộ truyện trong thư viện để giải phóng dung lượng không?`)) {
-          await storageService.clearAllStories();
-          await this.updateSavedCount();
-          this.openStoryLibraryModal();
-          this.showToast("Đã xóa toàn bộ truyện khỏi thư viện!", "success");
-        }
-      });
-    }
-
-    document.getElementById("btnNewStory").addEventListener("click", () => {
-      if (confirm("Bạn có muốn bắt đầu tạo một bộ truyện mới không?")) {
-        this.currentStory = null;
-        this.selectedConcept = null;
-        document.getElementById("conceptsSection").style.display = "none";
-        document.getElementById("userPremiseInput").value = "";
-        this.switchWorkspace("novel");
-        this.goToStep(1);
-      }
-    });
-
-    // ==================== WORKSPACE NAVIGATION TABS ====================
-    const tabNovel = document.getElementById("tabNavNovelStudio");
-    const tabTrans = document.getElementById("tabNavTranslator");
-    const tabAudio = document.getElementById("tabNavAudioStudio");
-    if (tabNovel) tabNovel.addEventListener("click", () => this.switchWorkspace("novel"));
-    if (tabTrans) tabTrans.addEventListener("click", () => this.switchWorkspace("translator"));
-    if (tabAudio) tabAudio.addEventListener("click", () => this.switchWorkspace("audio"));
-
-    const btnHeaderAudio = document.getElementById("btnHeaderAudioPortal");
-    if (btnHeaderAudio) {
-      btnHeaderAudio.addEventListener("click", (e) => {
-        e.preventDefault();
-        this.switchWorkspace("audio");
-      });
-    }
-
-    // ==================== TRANSLATOR STUDIO EVENTS ====================
-    const btnModeSrt = document.getElementById("btnTransModeSrt");
-    const btnModeNovel = document.getElementById("btnTransModeNovel");
-    if (btnModeSrt) btnModeSrt.addEventListener("click", () => this.switchTransMode("srt"));
-    if (btnModeNovel) btnModeNovel.addEventListener("click", () => this.switchTransMode("novel"));
-
-    const transModelSelect = document.getElementById("transModelSelect");
-    if (transModelSelect) {
-      transModelSelect.addEventListener("change", () => this.updateTransEstimate());
-    }
-
-    // Translation Custom Style Chips
-    const styleInput = document.getElementById("transStyleInput");
-    const styleChips = document.querySelectorAll(".btn-style-chip");
-
-    styleChips.forEach(chip => {
-      chip.addEventListener("click", () => {
-        const styleVal = chip.getAttribute("data-style") || "";
-        if (styleInput) {
-          styleInput.value = styleVal;
-        }
-        styleChips.forEach(c => c.classList.remove("active"));
-        chip.classList.add("active");
-      });
-    });
-
-    if (styleInput) {
-      styleInput.addEventListener("input", () => {
-        const currentVal = styleInput.value.trim();
-        styleChips.forEach(chip => {
-          const chipVal = chip.getAttribute("data-style") || "";
-          if (chipVal === currentVal) {
-            chip.classList.add("active");
-          } else {
-            chip.classList.remove("active");
+      tbody.innerHTML = this.adminUsers.map(u => `
+        <tr>
+          <td><strong>#${u.id}</strong></td>
+          <td>${u.name || u.username}</td>
+          <td><code>${u.email}</code></td>
+          <td><span class="badge ${u.role === 'admin' ? 'badge-pink' : 'badge-purple'}">${u.role}</span></td>
+          <td style="font-size: 11px; color: var(--text-dim);">${new Date(u.created_at).toLocaleDateString("vi-VN")}</td>
+          <td>
+            ${u.role !== 'admin' ? `
+              <button class="btn btn-secondary btn-xs btn-change-role" data-uid="${u.id}" data-role="${u.role}">
+                Đổi thành Admin
+              </button>
+            ` : `<span style="font-size: 11px; color: var(--accent-emerald);">Tối cao</span>`}
+          </td>
+        </tr>
+      `).join("");
+
+      tbody.querySelectorAll(".btn-change-role").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+          const uid = e.target.getAttribute("data-uid");
+          const curRole = e.target.getAttribute("data-role");
+          const nextRole = curRole === "admin" ? "user" : "admin";
+          if (confirm(`Bạn có chắc muốn nâng cấp người dùng #${uid} thành ${nextRole}?`)) {
+            await authService.updateUserRole(uid, nextRole);
+            this.showToast("Đã cập nhật quyền thành công!", "success");
+            await this.loadAdminUsersList();
           }
         });
       });
-    }
 
-    const dropzone = document.getElementById("transDropzone");
-    const fileInput = document.getElementById("transFileInput");
-    const dropzoneTrigger = document.getElementById("dropzoneTrigger");
-
-    if (dropzoneTrigger && fileInput) {
-      dropzoneTrigger.addEventListener("click", () => fileInput.click());
-      fileInput.addEventListener("change", (e) => {
-        if (e.target.files && e.target.files[0]) {
-          this.handleTransFileUpload(e.target.files[0]);
-        }
-      });
-    }
-
-    if (dropzone) {
-      dropzone.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        dropzone.classList.add("dragover");
-      });
-      dropzone.addEventListener("dragleave", () => {
-        dropzone.classList.remove("dragover");
-      });
-      dropzone.addEventListener("drop", (e) => {
-        e.preventDefault();
-        dropzone.classList.remove("dragover");
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-          this.handleTransFileUpload(e.dataTransfer.files[0]);
-        }
-      });
-    }
-
-    const transSourceInput = document.getElementById("transSourceInput");
-    if (transSourceInput) {
-      transSourceInput.addEventListener("input", () => this.onTransSourceChanged());
-    }
-
-    const btnPaste = document.getElementById("btnPasteSource");
-    if (btnPaste) {
-      btnPaste.addEventListener("click", async () => {
-        try {
-          const text = await navigator.clipboard.readText();
-          if (text) {
-            transSourceInput.value = text;
-            this.onTransSourceChanged();
-            this.showToast("Đã dán văn bản từ clipboard!", "info");
-          }
-        } catch {
-          this.showToast("Không thể đọc clipboard tự động, vui lòng dùng Ctrl+V.", "warning");
-        }
-      });
-    }
-
-    const btnClear = document.getElementById("btnClearSource");
-    if (btnClear) {
-      btnClear.addEventListener("click", () => {
-        transSourceInput.value = "";
-        document.getElementById("transResultOutput").value = "";
-        this.onTransSourceChanged();
-      });
-    }
-
-    const btnStartTrans = document.getElementById("btnStartTranslate");
-    if (btnStartTrans) btnStartTrans.addEventListener("click", () => this.startTranslation());
-
-    const btnPauseTrans = document.getElementById("btnPauseTranslate");
-    if (btnPauseTrans) btnPauseTrans.addEventListener("click", () => this.togglePauseTranslation());
-
-    const btnCancelTrans = document.getElementById("btnCancelTranslate");
-    if (btnCancelTrans) btnCancelTrans.addEventListener("click", () => this.cancelTranslation());
-
-    const btnDownloadVi = document.getElementById("btnDownloadSrtVi");
-    if (btnDownloadVi) btnDownloadVi.addEventListener("click", () => this.downloadSrt("translated"));
-
-    const btnDownloadBi = document.getElementById("btnDownloadSrtBilingual");
-    if (btnDownloadBi) btnDownloadBi.addEventListener("click", () => this.downloadSrt("bilingual"));
-
-    const btnDownloadTxt = document.getElementById("btnDownloadTxt");
-    if (btnDownloadTxt) btnDownloadTxt.addEventListener("click", () => this.downloadTransTxt());
-
-    const btnCopyResult = document.getElementById("btnCopyTranslated");
-    if (btnCopyResult) {
-      btnCopyResult.addEventListener("click", () => {
-        const text = document.getElementById("transResultOutput").value;
-        if (text) {
-          navigator.clipboard.writeText(text);
-          this.showToast("Đã sao chép bản dịch vào clipboard!", "success");
-        }
-      });
-    }
-
-    const btnSendAudio = document.getElementById("btnSendToAudioStudio");
-    if (btnSendAudio) btnSendAudio.addEventListener("click", () => this.sendTranslatedToAudio());
-
-    const btnSaveLib = document.getElementById("btnSaveToLibrary");
-    if (btnSaveLib) btnSaveLib.addEventListener("click", () => this.saveTranslatedToLibrary());
-
-    // ==================== AUDIO TTS STUDIO EVENTS ====================
-    const audioLangChips = document.querySelectorAll("#audioLangChips .btn-style-chip");
-    audioLangChips.forEach(chip => {
-      chip.addEventListener("click", () => {
-        const lang = chip.getAttribute("data-lang") || "vi-VN";
-        this.selectedAudioLang = lang;
-        audioLangChips.forEach(c => c.classList.remove("active"));
-        chip.classList.add("active");
-        this.renderAudioVoices(lang, document.getElementById("audioVoiceSearch")?.value || "");
-      });
-    });
-
-    const audioVoiceSearch = document.getElementById("audioVoiceSearch");
-    if (audioVoiceSearch) {
-      audioVoiceSearch.addEventListener("input", (e) => {
-        this.renderAudioVoices(this.selectedAudioLang, e.target.value);
-      });
-    }
-
-    const audioRateSlider = document.getElementById("audioRateSlider");
-    const audioRateVal = document.getElementById("audioRateVal");
-    if (audioRateSlider && audioRateVal) {
-      audioRateSlider.addEventListener("input", (e) => {
-        audioRateVal.textContent = `${parseFloat(e.target.value).toFixed(1)}x`;
-      });
-    }
-
-    const audioThreadsSlider = document.getElementById("audioThreadsSlider");
-    const audioThreadsVal = document.getElementById("audioThreadsVal");
-    if (audioThreadsSlider && audioThreadsVal) {
-      audioThreadsSlider.addEventListener("input", (e) => {
-        audioThreadsVal.textContent = `${e.target.value} luồng`;
-      });
-    }
-
-    const audioTextInput = document.getElementById("audioTextInput");
-    if (audioTextInput) {
-      audioTextInput.addEventListener("input", () => this.onAudioTextChanged());
-    }
-
-    const btnAudioClean = document.getElementById("btnAudioCleanText");
-    if (btnAudioClean) {
-      btnAudioClean.addEventListener("click", () => this.cleanAudioTextInput());
-    }
-
-    const btnAudioPaste = document.getElementById("btnAudioPaste");
-    if (btnAudioPaste) {
-      btnAudioPaste.addEventListener("click", async () => {
-        try {
-          const text = await navigator.clipboard.readText();
-          if (text) {
-            if (audioTextInput) audioTextInput.value = text;
-            this.onAudioTextChanged();
-            this.showToast("Đã dán văn bản từ clipboard!", "info");
-          }
-        } catch {
-          this.showToast("Không thể đọc clipboard tự động, vui lòng dùng Ctrl+V.", "warning");
-        }
-      });
-    }
-
-    const btnAudioClear = document.getElementById("btnAudioClear");
-    if (btnAudioClear) {
-      btnAudioClear.addEventListener("click", () => {
-        if (audioTextInput) audioTextInput.value = "";
-        this.onAudioTextChanged();
-      });
-    }
-
-    const btnStartAudio = document.getElementById("btnStartGenerateAudio");
-    if (btnStartAudio) {
-      btnStartAudio.addEventListener("click", () => this.startAudioGeneration());
-    }
-
-    const btnCancelAudio = document.getElementById("btnCancelGenerateAudio");
-    if (btnCancelAudio) {
-      btnCancelAudio.addEventListener("click", () => this.cancelAudioGeneration());
-    }
-
-    const btnResetDev = document.getElementById("btnAudioResetDevice");
-    if (btnResetDev) {
-      btnResetDev.addEventListener("click", async () => {
-        try {
-          btnResetDev.disabled = true;
-          btnResetDev.innerHTML = `<span>⏳ Đang đổi...</span>`;
-          const res = await audioTtsService.resetDeviceId();
-          this.showToast(`Đã đổi Device ID thành công: ${res.device_id || "OK"}`, "success");
-        } catch (err) {
-          this.showToast(`Không thể đổi Device ID: ${err.message}`, "error");
-        } finally {
-          btnResetDev.disabled = false;
-          btnResetDev.innerHTML = `🔄 Đổi ID (Gỡ Ban)`;
-        }
-      });
-    }
-
-    const btnSkipBack = document.getElementById("btnAudioSkipBack");
-    const btnSkipFwd = document.getElementById("btnAudioSkipFwd");
-    const mainAudio = document.getElementById("mainAudioElement");
-
-    if (btnSkipBack && mainAudio) {
-      btnSkipBack.addEventListener("click", () => {
-        mainAudio.currentTime = Math.max(0, mainAudio.currentTime - 5);
-      });
-    }
-    if (btnSkipFwd && mainAudio) {
-      btnSkipFwd.addEventListener("click", () => {
-        mainAudio.currentTime = Math.min(mainAudio.duration || 0, mainAudio.currentTime + 5);
-      });
-    }
-
-    const audioPlaybackRate = document.getElementById("audioPlaybackRate");
-    if (audioPlaybackRate && mainAudio) {
-      audioPlaybackRate.addEventListener("change", (e) => {
-        mainAudio.playbackRate = parseFloat(e.target.value) || 1.0;
-      });
-    }
-
-    const btnDownloadMp3 = document.getElementById("btnDownloadMp3");
-    if (btnDownloadMp3) {
-      btnDownloadMp3.addEventListener("click", () => this.downloadGeneratedMp3());
-    }
-
-    const btnSaveAudioLib = document.getElementById("btnSaveAudioToLib");
-    if (btnSaveAudioLib) {
-      btnSaveAudioLib.addEventListener("click", () => this.saveGeneratedAudioToLibrary());
-    }
-
-    // Step 1 Events
-    const btnToggleAdd = document.getElementById("btnToggleAddTag");
-    if (btnToggleAdd) {
-      btnToggleAdd.addEventListener("click", () => this.toggleCustomTagPanel());
-    }
-
-    const btnCloseAdd = document.getElementById("btnCloseAddTag");
-    if (btnCloseAdd) {
-      btnCloseAdd.addEventListener("click", () => this.toggleCustomTagPanel(false));
-    }
-
-    const btnAdd = document.getElementById("btnAddCustomTag");
-    if (btnAdd) {
-      btnAdd.addEventListener("click", () => {
-        const input = document.getElementById("customTagInput");
-        if (input) this.addCustomTag(input.value);
-      });
-    }
-
-    const customTagInput = document.getElementById("customTagInput");
-    if (customTagInput) {
-      customTagInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          this.addCustomTag(customTagInput.value);
-        } else if (e.key === "Escape") {
-          this.toggleCustomTagPanel(false);
-        }
-      });
-    }
-
-    document.getElementById("btnRandomTropes").addEventListener("click", () => this.applyRandomTropes());
-    document.getElementById("btnSamplePremise").addEventListener("click", () => {
-      const sample = getRandomSamplePremise();
-      document.getElementById("userPremiseInput").value = sample;
-      this.showToast("Đã điền mẫu ý tưởng mở đầu!", "info");
-    });
-    document.getElementById("btnGenerateConcepts").addEventListener("click", () => this.generateConcepts());
-    document.getElementById("btnRerollConcepts").addEventListener("click", () => this.generateConcepts());
-    document.getElementById("btnConfirmConceptAndGoToOutline").addEventListener("click", () => this.createOutlineFromSelectedConcept());
-
-    // Step 2 Events
-    document.getElementById("btnBackToStep1").addEventListener("click", () => this.goToStep(1));
-    document.getElementById("btnRegenerateOutline").addEventListener("click", () => this.createOutlineFromSelectedConcept());
-    document.getElementById("btnAddCharacter").addEventListener("click", () => {
-      this.currentStory.characterBible.push({ name: "Cố Tử Ninh", role: "Đồng minh", personality: "Thấu hiểu, quyết đoán", traits: "Trang phục thanh lịch" });
-      this.renderCheckpoint1();
-    });
-    document.getElementById("btnStartWriting").addEventListener("click", () => this.startFullStoryWriting());
-
-    // Step 3 Events
-    document.getElementById("btnPauseResumeWriting").addEventListener("click", () => {
-      if (this.isPaused) {
-        this.isPaused = false;
-        document.getElementById("btnPauseResumeWriting").textContent = "⏸️ Tạm Dừng";
-        this.runWritingPipeline();
-      } else {
-        this.isPaused = true;
-        document.getElementById("btnPauseResumeWriting").textContent = "▶️ Tiếp Tục Viết";
-      }
-    });
-
-    document.getElementById("btnGoToStep4").addEventListener("click", () => {
-      this.renderReaderMode();
-      this.goToStep(4);
-    });
-
-    // Step 4 Events
-    document.getElementById("btnCleanForAudio").addEventListener("click", () => this.cleanTextForTTS());
-    document.getElementById("btnRestoreOriginalText").addEventListener("click", () => this.restoreOriginalText());
-
-    // Audio format options
-    const chkRemoveTitles = document.getElementById("chkAudioRemoveTitles");
-    if (chkRemoveTitles) {
-      chkRemoveTitles.checked = this.audioRemoveTitles;
-      chkRemoveTitles.addEventListener("change", (e) => {
-        this.audioRemoveTitles = e.target.checked;
-        if (this.isAudioCleaned) {
-          this.renderReaderChaptersContent();
-        }
-      });
-    }
-
-    const chkSingleParagraph = document.getElementById("chkAudioSingleParagraph");
-    if (chkSingleParagraph) {
-      chkSingleParagraph.checked = this.audioSingleParagraph;
-      chkSingleParagraph.addEventListener("change", (e) => {
-        this.audioSingleParagraph = e.target.checked;
-        if (this.isAudioCleaned) {
-          this.renderReaderChaptersContent();
-        }
-      });
-    }
-
-    // Theme toggles
-    document.getElementById("btnThemeDark").addEventListener("click", (e) => this.setReaderTheme("dark", e.target));
-    document.getElementById("btnThemeSepia").addEventListener("click", (e) => this.setReaderTheme("sepia", e.target));
-    document.getElementById("btnThemeLight").addEventListener("click", (e) => this.setReaderTheme("light", e.target));
-
-    // Font size
-    const fontSizeSlider = document.getElementById("readerFontSizeRange");
-    fontSizeSlider.addEventListener("input", (e) => {
-      const size = e.target.value;
-      document.getElementById("fontSizeDisplay").textContent = `${size}px`;
-      document.documentElement.style.setProperty("--reader-size", `${size}px`);
-    });
-
-    // Download & Copy Handlers
-    const handleDownloadAudioTxt = () => {
-      const safeTitle = (this.currentStory?.title || "truyen_phim_ngan").replace(/[^a-zA-Z0-9_-]/g, "_");
-      this.downloadFile(`${safeTitle}_audio_clean.txt`, this.getCleanAudioTxt());
-    };
-
-    const handleCopyCleanText = () => {
-      const text = this.getCleanAudioTxt();
-      navigator.clipboard.writeText(text).then(() => {
-        this.showToast("Đã sao chép toàn bộ văn bản chuẩn Audio vào Clipboard!", "success");
-      });
-    };
-
-    document.getElementById("btnDownloadAudioTxt")?.addEventListener("click", handleDownloadAudioTxt);
-    document.getElementById("btnQuickDownloadAudioTxt")?.addEventListener("click", handleDownloadAudioTxt);
-
-    document.getElementById("btnCopyCleanText")?.addEventListener("click", handleCopyCleanText);
-    document.getElementById("btnQuickCopyCleanText")?.addEventListener("click", handleCopyCleanText);
-
-    document.getElementById("btnDownloadFullMarkdown")?.addEventListener("click", () => {
-      const safeTitle = (this.currentStory?.title || "truyen_phim_ngan").replace(/[^a-zA-Z0-9_-]/g, "_");
-      this.downloadFile(`${safeTitle}_full.md`, this.getFullMarkdown());
-    });
-
-    document.getElementById("btnDownloadProjectJson")?.addEventListener("click", () => {
-      const safeTitle = (this.currentStory?.title || "truyen_phim_ngan").replace(/[^a-zA-Z0-9_-]/g, "_");
-      this.downloadFile(`${safeTitle}_project.json`, JSON.stringify(this.currentStory, null, 2), "application/json");
-    });
-
-    // Chapter Navigation Dropdown & Scroll Top
-    const chapterSelect = document.getElementById("readerChapterSelect");
-    if (chapterSelect) {
-      chapterSelect.addEventListener("change", (e) => {
-        const targetId = e.target.value;
-        if (!targetId) return;
-        const targetEl = document.getElementById(targetId);
-        const readerBody = document.getElementById("readerBody");
-        if (targetEl && readerBody) {
-          const topOffset = targetEl.offsetTop - readerBody.offsetTop;
-          readerBody.scrollTo({ top: topOffset, behavior: "smooth" });
-        }
-      });
-    }
-
-    const btnReaderScrollTop = document.getElementById("btnReaderScrollTop");
-    if (btnReaderScrollTop) {
-      btnReaderScrollTop.addEventListener("click", () => {
-        const readerBody = document.getElementById("readerBody");
-        if (readerBody) readerBody.scrollTo({ top: 0, behavior: "smooth" });
-      });
-    }
-
-    // Step Indicator Click
-    for (let i = 1; i <= 4; i++) {
-      document.getElementById(`stepPill${i}`)?.addEventListener("click", () => {
-        if (i === 1) this.goToStep(1);
-        if (i === 2 && this.currentStory) this.goToStep(2);
-        if (i === 3 && this.currentStory) this.goToStep(3);
-        if (i === 4 && this.currentStory) {
-          this.renderReaderMode();
-          this.goToStep(4);
-        }
-      });
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--accent-rose);">✕ Lỗi: ${err.message}</td></tr>`;
     }
   }
 
-  setReaderTheme(theme, activeBtn) {
-    const container = document.getElementById("readerContainer");
-    container.className = `reader-container reader-theme-${theme}`;
-    document.querySelectorAll(".reader-toolbar .btn-group .btn").forEach(b => b.classList.remove("active"));
-    activeBtn.classList.add("active");
-  }
-
-  // ==================== MODAL API SETTINGS ====================
+  // ==================== API SETTINGS & STORY LIBRARY MODALS ====================
 
   openApiSettingsModal() {
-    const keys = storageService.getApiKeys();
-    const settings = storageService.getSettings();
+    const modal = document.getElementById("apiSettingsModal");
+    const input = document.getElementById("apiKeysInput");
+    const throttleInput = document.getElementById("throttleDelayInput");
+    const chapterTempInput = document.getElementById("chapterTempInput");
+    const modelSelect = document.getElementById("modelSelect");
 
-    document.getElementById("apiKeysInput").value = keys.join("\n");
-    document.getElementById("modelSelect").value = settings.model || "gemini-3.6-flash";
-    document.getElementById("throttleDelayInput").value = settings.delayBetweenChapters || 3500;
-    document.getElementById("chapterTempInput").value = settings.temperatureChapter || 0.8;
-    document.getElementById("apiTestResult").textContent = "";
+    if (modal) {
+      const keys = storageService.getApiKeys();
+      const settings = storageService.getSettings();
 
-    this.updateQuotaDisplay();
-    document.getElementById("apiSettingsModal").classList.add("open");
+      if (input) input.value = keys.join("\n");
+      if (throttleInput) throttleInput.value = settings.delayBetweenChapters || 3500;
+      if (chapterTempInput) chapterTempInput.value = settings.temperatureChapter || 0.8;
+      if (modelSelect) modelSelect.value = settings.model || "gemini-3.6-flash";
+
+      modal.classList.add("active");
+      this.updateQuotaDisplay(modelSelect?.value);
+    }
   }
 
   closeApiSettingsModal() {
-    document.getElementById("apiSettingsModal").classList.remove("open");
-  }
-
-  clearApiUsageStats() {
-    if (confirm("Bạn có chắc chắn muốn đặt lại bộ đếm token và request về 0 không?")) {
-      storageService.clearApiUsageStats();
-      this.updateQuotaDisplay();
-      this.showToast("Đã đặt lại toàn bộ thống kê API!", "info");
-    }
+    const modal = document.getElementById("apiSettingsModal");
+    if (modal) modal.classList.remove("active");
   }
 
   async saveApiSettings() {
@@ -2304,37 +635,26 @@ class NovelStudioApp {
     }
   }
 
-  // ==================== MODAL STORY LIBRARY ====================
-
   async openStoryLibraryModal() {
+    const modal = document.getElementById("storyLibraryModal");
+    const container = document.getElementById("libraryStoriesList");
+    if (!modal || !container) return;
+
+    modal.classList.add("active");
+    container.innerHTML = `<div style="text-align: center; padding: 30px; color: var(--text-dim);"><span class="typing-cursor"></span> Đang tải danh sách tác phẩm...</div>`;
+
     const stories = await storageService.getAllStories();
-    this.renderLibraryList(stories);
-    document.getElementById("storyLibraryModal").classList.add("open");
-  }
-
-  closeStoryLibraryModal() {
-    document.getElementById("storyLibraryModal").classList.remove("open");
-  }
-
-  async filterLibraryStories(query) {
-    const stories = await storageService.getAllStories();
-    const q = query.toLowerCase().trim();
-    const filtered = stories.filter(s => 
-      (s.title || "").toLowerCase().includes(q) ||
-      (s.params?.selectedTags || []).some(t => t.toLowerCase().includes(q))
-    );
-    this.renderLibraryList(filtered);
-  }
-
-  renderLibraryList(stories) {
-    const container = document.getElementById("libraryListContainer");
-    container.innerHTML = "";
-
     if (stories.length === 0) {
-      container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 24px;">Chưa có truyện nào trong thư viện.</div>`;
+      container.innerHTML = `
+        <div style="text-align: center; padding: 40px; color: var(--text-dim);">
+          <div style="font-size: 32px; margin-bottom: 8px;">📚</div>
+          <div>Thư viện chưa có tác phẩm nào. Hãy tạo câu chuyện đầu tiên của bạn ở Bước 1!</div>
+        </div>
+      `;
       return;
     }
 
+    container.innerHTML = "";
     stories.forEach(story => {
       const card = document.createElement("div");
       card.className = "studio-card";
@@ -2364,10 +684,11 @@ class NovelStudioApp {
       `;
 
       card.querySelector(".btn-load-story").addEventListener("click", () => {
-        this.currentStory = story;
+        this.novelController.currentStory = story;
         this.closeStoryLibraryModal();
-        this.renderReaderMode();
-        this.goToStep(4);
+        this.novelController.renderReaderMode();
+        this.novelController.goToStep(4);
+        this.switchWorkspace("novel");
         this.showToast(`Đã mở truyện: ${story.title}`, "info");
       });
 
@@ -2384,625 +705,97 @@ class NovelStudioApp {
     });
   }
 
-  // ==================== WORKSPACE SWITCHER ====================
+  closeStoryLibraryModal() {
+    const modal = document.getElementById("storyLibraryModal");
+    if (modal) modal.classList.remove("active");
+  }
 
-  switchWorkspace(workspaceName) {
-    this.currentWorkspace = workspaceName;
+  // ==================== GLOBAL EVENT BINDINGS ====================
 
+  bindGlobalEvents() {
+    // 1. Workspace Tabs
     const tabNovel = document.getElementById("tabNavNovelStudio");
     const tabTrans = document.getElementById("tabNavTranslator");
     const tabAudio = document.getElementById("tabNavAudioStudio");
-    const novelWorkspace = document.getElementById("novelStudioWorkspace");
-    const transWorkspace = document.getElementById("translatorStudioWorkspace");
-    const audioWorkspace = document.getElementById("audioStudioWorkspace");
+    if (tabNovel) tabNovel.addEventListener("click", () => this.switchWorkspace("novel"));
+    if (tabTrans) tabTrans.addEventListener("click", () => this.switchWorkspace("translator"));
+    if (tabAudio) tabAudio.addEventListener("click", () => this.switchWorkspace("audio"));
 
-    if (tabNovel) tabNovel.classList.toggle("active", workspaceName === "novel");
-    if (tabTrans) tabTrans.classList.toggle("active", workspaceName === "translator");
-    if (tabAudio) tabAudio.classList.toggle("active", workspaceName === "audio");
-
-    if (novelWorkspace) novelWorkspace.style.display = workspaceName === "novel" ? "block" : "none";
-    if (transWorkspace) transWorkspace.style.display = workspaceName === "translator" ? "block" : "none";
-    if (audioWorkspace) audioWorkspace.style.display = workspaceName === "audio" ? "block" : "none";
-
-    if (workspaceName === "translator") {
-      this.updateTransEstimate();
-    } else if (workspaceName === "audio") {
-      this.onAudioTextChanged();
-    }
-  }
-
-  // ==================== TRANSLATOR STUDIO LOGIC ====================
-
-  switchTransMode(mode) {
-    this.transMode = mode;
-    const btnSrt = document.getElementById("btnTransModeSrt");
-    const btnNovel = document.getElementById("btnTransModeNovel");
-    const sourceTitle = document.getElementById("transSourceTitle");
-    const sourceInput = document.getElementById("transSourceInput");
-    const btnVi = document.getElementById("btnDownloadSrtVi");
-    const btnBi = document.getElementById("btnDownloadSrtBilingual");
-    const btnTxt = document.getElementById("btnDownloadTxt");
-    const btnAudio = document.getElementById("btnSendToAudioStudio");
-    const btnLib = document.getElementById("btnSaveToLibrary");
-
-    if (mode === "novel") {
-      if (btnSrt) btnSrt.classList.remove("active");
-      if (btnNovel) btnNovel.classList.add("active");
-      if (sourceTitle) sourceTitle.textContent = "Văn Bản Raw Tiểu Thuyết (Tiếng Trung / Anh):";
-      if (sourceInput) sourceInput.placeholder = "Dán văn bản raw tiểu thuyết tại đây...\n\nVí dụ:\n陆谨年冷冷地看着眼前这个满眼泪水的女人，嘴角勾起一抹讥讽的笑意。\n“沈昭昭，你以为装可怜就能让我放过沈家吗？”";
-      if (btnVi) btnVi.style.display = "none";
-      if (btnBi) btnBi.style.display = "none";
-      if (btnTxt) btnTxt.style.display = "inline-flex";
-      if (btnAudio) btnAudio.style.display = "inline-flex";
-      if (btnLib) btnLib.style.display = "inline-flex";
-    } else {
-      if (btnSrt) btnSrt.classList.add("active");
-      if (btnNovel) btnNovel.classList.remove("active");
-      if (sourceTitle) sourceTitle.textContent = "Nội Dung Phụ Đề (.SRT):";
-      if (sourceInput) sourceInput.placeholder = "Dán nội dung file .SRT tại đây...\n\nVí dụ:\n1\n00:00:01,000 --> 00:00:03,500\n你到底想怎么样？\n\n2\n00:00:03,800 --> 00:00:06,200\n我想让你付出代价！";
-      if (btnVi) btnVi.style.display = "inline-flex";
-      if (btnBi) btnBi.style.display = "inline-flex";
-      if (btnTxt) btnTxt.style.display = "inline-flex";
-      if (btnAudio) btnAudio.style.display = "inline-flex";
-      if (btnLib) btnLib.style.display = "none";
+    const btnHeaderAudio = document.getElementById("btnHeaderAudioPortal");
+    if (btnHeaderAudio) {
+      btnHeaderAudio.addEventListener("click", (e) => {
+        e.preventDefault();
+        this.switchWorkspace("audio");
+      });
     }
 
-    this.onTransSourceChanged();
-  }
+    // 2. Modals Triggers
+    const btnOpenSettings = document.getElementById("btnOpenApiSettings");
+    const btnCloseSettings = document.getElementById("btnCloseApiSettings");
+    const btnSaveSettings = document.getElementById("btnSaveApiSettings");
+    const btnTestKey = document.getElementById("btnTestApiKey");
+    const modelSelect = document.getElementById("modelSelect");
 
-  onTransSourceChanged() {
-    const text = document.getElementById("transSourceInput")?.value || "";
-    const itemCountEl = document.getElementById("transItemCount");
-    const wordCountEl = document.getElementById("transWordCount");
+    if (btnOpenSettings) btnOpenSettings.addEventListener("click", () => this.openApiSettingsModal());
+    if (btnCloseSettings) btnCloseSettings.addEventListener("click", () => this.closeApiSettingsModal());
+    if (btnSaveSettings) btnSaveSettings.addEventListener("click", () => this.saveApiSettings());
+    if (btnTestKey) btnTestKey.addEventListener("click", () => this.testApiKeyConnection());
 
-    // Tự động nhận diện nếu người dùng dán file SRT
-    const isSrt = translatorService.isSrtContent(text);
-    if (isSrt && this.transMode !== "srt") {
-      this.switchTransMode("srt");
-      return;
+    if (modelSelect) {
+      modelSelect.addEventListener("change", (e) => {
+        this.updateQuotaDisplay(e.target.value);
+      });
     }
 
-    if (this.transMode === "srt") {
-      this.transParsedSrt = translatorService.parseSrt(text);
-      if (itemCountEl) itemCountEl.textContent = `${this.transParsedSrt.length} dòng phụ đề`;
-      const units = translatorService.countUnits(text);
-      if (wordCountEl) wordCountEl.textContent = `${units.toLocaleString()} chữ/từ`;
-    } else {
-      this.transRawText = text;
-      const units = translatorService.countUnits(text);
-      const paras = text.split(/\n+/).map(p => p.trim()).filter(Boolean).length;
-      if (itemCountEl) itemCountEl.textContent = `${paras} đoạn văn`;
-      if (wordCountEl) wordCountEl.textContent = `${units.toLocaleString()} chữ/từ`;
-    }
+    const liveBadge = document.getElementById("apiQuotaLiveBadge");
+    if (liveBadge) liveBadge.addEventListener("click", () => this.openApiSettingsModal());
 
-    this.updateTransEstimate();
-  }
-
-  updateTransEstimate() {
-    const modelSelect = document.getElementById("transModelSelect");
-    const modelId = modelSelect ? modelSelect.value : "gemini-3.6-flash";
-    const badgeEl = document.getElementById("transStrategyBadge");
-    const descEl = document.getElementById("transStrategyDesc");
-
-    const isGemma = modelId.toLowerCase().includes("gemma");
-    const config = translatorService.getChunkConfig(modelId, this.transMode);
-
-    let totalUnits = 0;
-    if (this.transMode === "srt") {
-      totalUnits = this.transParsedSrt.length;
-    } else {
-      const text = document.getElementById("transSourceInput")?.value || "";
-      totalUnits = translatorService.countUnits(text);
-    }
-
-    const estimatedChunks = totalUnits > 0 ? Math.ceil(totalUnits / config.chunkSize) : 0;
-
-    if (badgeEl) {
-      if (isGemma) {
-        badgeEl.className = "strategy-badge gemma";
-        badgeEl.textContent = `⚡ Smart Chunking: Chia Nhỏ (Gemma 16k TPM)`;
-      } else {
-        badgeEl.className = "strategy-badge";
-        badgeEl.textContent = `⚡ Smart Chunking: Gộp Chunk Lớn (Gemini 250k TPM)`;
-      }
-    }
-
-    if (descEl) {
-      if (totalUnits === 0) {
-        descEl.innerHTML = isGemma
-          ? `Gemma 14.4k RPD: Tự động chia nhỏ 50 dòng hoặc 900 chữ/request để an toàn trần 16k TPM`
-          : `Gemini: Gộp chunk tối đa 350 dòng hoặc 4.000 chữ/request (tiết kiệm số lượt gọi)`;
-      } else {
-        if (isGemma) {
-          descEl.innerHTML = `Model Gemma: Chia thành <strong>${estimatedChunks} phần nhỏ</strong> (Chạy tuần tự, tiêu tốn <strong>${estimatedChunks}/14.400 RPD</strong>)`;
-        } else {
-          descEl.innerHTML = `Model Gemini: Gom trọn gói thành <strong>${estimatedChunks} Request duy nhất</strong> (Tiết kiệm hạn mức ngày)`;
+    const btnClearStats = document.getElementById("btnClearApiStats");
+    if (btnClearStats) {
+      btnClearStats.addEventListener("click", () => {
+        if (confirm("Bạn có chắc muốn reset toàn bộ bộ đếm token và request của các Key về 0?")) {
+          storageService.resetApiStats();
+          this.updateQuotaDisplay();
+          this.showToast("Đã reset thống kê hạn mức API!", "success");
         }
-      }
-    }
-  }
-
-  handleTransFileUpload(file) {
-    if (!file) return;
-    const isSrt = file.name.toLowerCase().endsWith(".srt");
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      const content = e.target.result;
-      const inputEl = document.getElementById("transSourceInput");
-      if (inputEl) {
-        inputEl.value = content;
-      }
-      if (isSrt) {
-        this.switchTransMode("srt");
-      } else {
-        this.switchTransMode("novel");
-      }
-      this.showToast(`Đã tải file: ${file.name}`, "success");
-    };
-
-    reader.readAsText(file, "utf-8");
-  }
-
-  async startTranslation() {
-    const keys = storageService.getApiKeys();
-    if (!keys || keys.length === 0) {
-      this.showToast("Vui lòng cấu hình Gemini API Key trước khi dịch!", "warning");
-      this.openApiSettingsModal();
-      return;
+      });
     }
 
-    const sourceText = document.getElementById("transSourceInput")?.value?.trim() || "";
-    if (!sourceText) {
-      this.showToast("Vui lòng dán nội dung hoặc tải file cần dịch!", "warning");
-      return;
+    const btnOpenLib = document.getElementById("btnOpenStoryLibrary");
+    const btnCloseLib = document.getElementById("btnCloseStoryLibrary");
+    if (btnOpenLib) btnOpenLib.addEventListener("click", () => this.openStoryLibraryModal());
+    if (btnCloseLib) btnCloseLib.addEventListener("click", () => this.closeStoryLibraryModal());
+
+    // Auth Modal Triggers
+    const btnCloseAuth = document.getElementById("btnCloseAuthModal");
+    const tabLogin = document.getElementById("authTabLogin");
+    const tabReg = document.getElementById("authTabRegister");
+    const btnLoginSubmit = document.getElementById("btnLoginSubmit");
+    const btnRegSubmit = document.getElementById("btnRegisterSubmit");
+
+    if (btnCloseAuth) btnCloseAuth.addEventListener("click", () => this.closeAuthModal());
+    if (tabLogin) tabLogin.addEventListener("click", () => this.switchAuthTab("login"));
+    if (tabReg) tabReg.addEventListener("click", () => this.switchAuthTab("register"));
+    if (btnLoginSubmit) btnLoginSubmit.addEventListener("click", () => this.handleLogin());
+    if (btnRegSubmit) btnRegSubmit.addEventListener("click", () => this.handleRegister());
+
+    // Profile Modal Triggers
+    const btnCloseProfile = document.getElementById("btnCloseProfileModal");
+    const btnLogout = document.getElementById("btnLogout");
+    const btnOpenAdmin = document.getElementById("btnOpenAdminPanel");
+    const btnCloseAdmin = document.getElementById("btnCloseAdminPanel");
+
+    if (btnCloseProfile) btnCloseProfile.addEventListener("click", () => this.closeUserProfileModal());
+    if (btnLogout) {
+      btnLogout.addEventListener("click", () => {
+        authService.logout();
+        this.closeUserProfileModal();
+        this.showToast("Đã đăng xuất tài khoản.", "info");
+      });
     }
 
-    // Tự động chuyển mode nếu nội dung dán vào không phải SRT
-    const isSrt = translatorService.isSrtContent(sourceText);
-    if (!isSrt && this.transMode === "srt") {
-      this.switchTransMode("novel");
-    } else if (isSrt && this.transMode === "novel") {
-      this.switchTransMode("srt");
-    }
-
-    const modelSelect = document.getElementById("transModelSelect");
-    const styleInputEl = document.getElementById("transStyleInput");
-    const modelId = modelSelect ? modelSelect.value : "gemini-3.6-flash";
-    const customStyle = styleInputEl ? styleInputEl.value.trim() : "";
-
-    // UI state: Translating
-    this.setTransUiState(true);
-
-    const progressBox = document.getElementById("transProgressContainer");
-    const progressMsg = document.getElementById("transProgressMsg");
-    const progressPct = document.getElementById("transProgressPct");
-    const progressBar = document.getElementById("transProgressBar");
-    const resultOutput = document.getElementById("transResultOutput");
-
-    if (progressBox) progressBox.style.display = "block";
-    if (resultOutput) resultOutput.value = "Đang kết nối tới AI và khởi tạo tiến trình dịch...";
-
-    const onProgress = (p) => {
-      if (progressMsg) progressMsg.textContent = p.message;
-      if (progressPct) progressPct.textContent = `${p.progressPercent}%`;
-      if (progressBar) progressBar.style.width = `${p.progressPercent}%`;
-
-      // Live update result preview cho cả SRT và Tiểu thuyết
-      if (this.transMode === "srt" && Array.isArray(this.transParsedSrt)) {
-        if (resultOutput) {
-          resultOutput.value = translatorService.buildSrt(this.transParsedSrt, "translated");
-        }
-      } else if (p.accumulatedText && resultOutput) {
-        resultOutput.value = p.accumulatedText;
-      }
-    };
-
-    try {
-      if (this.transMode === "srt") {
-        this.transParsedSrt = translatorService.parseSrt(sourceText);
-        if (this.transParsedSrt.length === 0) {
-          // Fallback sang Novel nếu parse SRT không ra item nào
-          const fullTranslated = await translatorService.translateNovel(sourceText, modelId, customStyle, onProgress);
-          this.transTranslatedText = fullTranslated;
-          if (resultOutput) {
-            resultOutput.value = fullTranslated;
-          }
-        } else {
-          await translatorService.translateSrt(this.transParsedSrt, modelId, customStyle, onProgress);
-          if (resultOutput) {
-            resultOutput.value = translatorService.buildSrt(this.transParsedSrt, "translated");
-          }
-        }
-      } else {
-        const fullTranslated = await translatorService.translateNovel(sourceText, modelId, customStyle, onProgress);
-        this.transTranslatedText = fullTranslated;
-        if (resultOutput) {
-          resultOutput.value = fullTranslated;
-        }
-      }
-
-      this.showToast("🎉 Đã dịch hoàn tất thành công!", "success");
-      this.enableTransExportButtons(true);
-
-    } catch (err) {
-      console.error("Translation error:", err);
-      this.showToast(`Lỗi khi dịch: ${err.message}`, "error");
-      if (resultOutput && resultOutput.value.startsWith("Đang")) {
-        resultOutput.value = `❌ Quá trình dịch bị gián đoạn: ${err.message}`;
-      }
-    } finally {
-      this.setTransUiState(false);
-    }
-  }
-
-  setTransUiState(isTranslating) {
-    const btnStart = document.getElementById("btnStartTranslate");
-    const btnPause = document.getElementById("btnPauseTranslate");
-    const btnCancel = document.getElementById("btnCancelTranslate");
-    const progressBox = document.getElementById("transProgressContainer");
-
-    if (isTranslating) {
-      if (btnStart) btnStart.style.display = "none";
-      if (btnPause) {
-        btnPause.style.display = "inline-flex";
-        btnPause.innerHTML = `<span>⏸️</span> Tạm Dừng`;
-      }
-      if (btnCancel) btnCancel.style.display = "inline-flex";
-      if (progressBox) progressBox.style.display = "block";
-    } else {
-      if (btnStart) {
-        btnStart.style.display = "inline-flex";
-        btnStart.innerHTML = `<span>▶️</span> Bắt Đầu Dịch Lại`;
-      }
-      if (btnPause) btnPause.style.display = "none";
-      if (btnCancel) btnCancel.style.display = "none";
-    }
-  }
-
-  togglePauseTranslation() {
-    const btnPause = document.getElementById("btnPauseTranslate");
-    if (!translatorService.isPaused) {
-      translatorService.pause();
-      if (btnPause) btnPause.innerHTML = `<span>▶️</span> Tiếp Tục`;
-      this.showToast("Đã tạm dừng tiến trình dịch.", "info");
-    } else {
-      translatorService.resume();
-      if (btnPause) btnPause.innerHTML = `<span>⏸️</span> Tạm Dừng`;
-      this.showToast("Đang tiếp tục dịch...", "info");
-    }
-  }
-
-  cancelTranslation() {
-    if (confirm("Bạn có chắc chắn muốn hủy tiến trình dịch hiện tại không?")) {
-      translatorService.cancel();
-      this.setTransUiState(false);
-      this.showToast("Đã hủy tiến trình dịch.", "warning");
-    }
-  }
-
-  enableTransExportButtons(enabled) {
-    const buttons = [
-      "btnDownloadSrtVi",
-      "btnDownloadSrtBilingual",
-      "btnDownloadTxt",
-      "btnCopyTranslated",
-      "btnSendToAudioStudio",
-      "btnSaveToLibrary"
-    ];
-    buttons.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.disabled = !enabled;
-    });
-  }
-
-  downloadSrt(mode = "translated") {
-    if (!this.transParsedSrt || this.transParsedSrt.length === 0) {
-      this.showToast("Chưa có nội dung phụ đề để tải về!", "warning");
-      return;
-    }
-    const content = translatorService.buildSrt(this.transParsedSrt, mode);
-    const suffix = mode === "bilingual" ? "_bilingual.srt" : "_vi.srt";
-    const filename = `subtitles_${Date.now()}${suffix}`;
-    this.triggerDownload(content, filename, "text/plain;charset=utf-8");
-    this.showToast(`Đã tải file phụ đề: ${filename}`, "success");
-  }
-
-  downloadTransTxt() {
-    const content = document.getElementById("transResultOutput")?.value || "";
-    if (!content) {
-      this.showToast("Chưa có nội dung văn bản để tải về!", "warning");
-      return;
-    }
-    const filename = `ban_dich_${Date.now()}.txt`;
-    this.triggerDownload(content, filename, "text/plain;charset=utf-8");
-    this.showToast(`Đã tải file văn bản: ${filename}`, "success");
-  }
-
-  triggerDownload(content, filename, mimeType) {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  sendTranslatedToAudio() {
-    const text = document.getElementById("transResultOutput")?.value || "";
-    if (!text || !text.trim()) {
-      this.showToast("Chưa có bản dịch để gửi sang Audio!", "warning");
-      return;
-    }
-    this.switchWorkspace("audio");
-    const audioInput = document.getElementById("audioTextInput");
-    if (audioInput) {
-      audioInput.value = text;
-      this.onAudioTextChanged();
-    }
-    this.showToast("Đã nạp bản dịch vào Tab Tạo Audio! ✨", "success");
-  }
-
-  sendStoryToAudioStudio() {
-    if (!this.currentStory || !this.currentStory.chapters) {
-      this.showToast("Chưa có truyện để gửi sang Audio!", "warning");
-      return;
-    }
-    const cleanText = this.buildCleanAudioText();
-    this.switchWorkspace("audio");
-    const audioInput = document.getElementById("audioTextInput");
-    if (audioInput) {
-      audioInput.value = cleanText;
-      this.onAudioTextChanged();
-    }
-    this.showToast(`Đã nạp toàn bộ truyện "${this.currentStory.title}" vào Tab Tạo Audio! ✨`, "success");
-  }
-
-  // ==================== AUDIO STUDIO LOGIC ====================
-
-  async initAudioStudio() {
-    try {
-      this.audioVoices = await audioTtsService.loadVoices();
-      const badge = document.getElementById("audioVoiceCountBadge");
-      if (badge) {
-        badge.textContent = `${this.audioVoices.length} Giọng Đọc`;
-      }
-      this.renderAudioVoices(this.selectedAudioLang);
-    } catch (e) {
-      console.warn("Chưa thể tải giọng đọc CapCut:", e);
-    }
-  }
-
-  renderAudioVoices(lang = "vi-VN", query = "") {
-    const select = document.getElementById("audioVoiceSelect");
-    if (!select) return;
-
-    const filtered = audioTtsService.filterVoices(lang, query);
-    select.innerHTML = "";
-
-    if (filtered.length === 0) {
-      const opt = document.createElement("option");
-      opt.value = "";
-      opt.textContent = "Không tìm thấy giọng đọc phù hợp";
-      select.appendChild(opt);
-      return;
-    }
-
-    filtered.forEach((v, idx) => {
-      const opt = document.createElement("option");
-      opt.value = v.voice_type;
-      opt.setAttribute("data-resource", v.resource_id || "");
-      opt.textContent = `${v.display_name || v.voice_type} (${v.lang || v.lan || "vi"})`;
-      if (v.voice_type === this.selectedAudioVoice || (idx === 0 && !this.selectedAudioVoice)) {
-        opt.selected = true;
-      }
-      select.appendChild(opt);
-    });
-
-    select.onchange = (e) => {
-      this.selectedAudioVoice = e.target.value;
-    };
-  }
-
-  onAudioTextChanged() {
-    const text = document.getElementById("audioTextInput")?.value || "";
-    const statsEl = document.getElementById("audioTextStats");
-    const estimateEl = document.getElementById("audioChunkEstimate");
-
-    const units = translatorService.countUnits(text);
-    const chars = text.length;
-    if (statsEl) {
-      statsEl.textContent = `${units.toLocaleString()} từ • ${chars.toLocaleString()} ký tự`;
-    }
-
-    const chunks = audioTtsService.splitTextChunks(text, 250);
-    const estSeconds = Math.max(1, Math.ceil(chunks.length * 0.4));
-    if (estimateEl) {
-      estimateEl.textContent = `${chunks.length} đoạn chunk (~${estSeconds}s hoàn thành)`;
-    }
-  }
-
-  cleanAudioTextInput() {
-    const input = document.getElementById("audioTextInput");
-    if (!input || !input.value.trim()) {
-      this.showToast("Chưa có văn bản để làm sạch!", "warning");
-      return;
-    }
-    const cleaned = normalizeTextForAudio(input.value);
-    input.value = cleaned;
-    this.onAudioTextChanged();
-    this.showToast("Đã làm sạch số và định dạng chuẩn Audio! ✨", "success");
-  }
-
-  async startAudioGeneration() {
-    const text = document.getElementById("audioTextInput")?.value?.trim();
-    if (!text) {
-      this.showToast("Vui lòng nhập hoặc dán văn bản cần tạo audio!", "warning");
-      return;
-    }
-
-    const select = document.getElementById("audioVoiceSelect");
-    const selectedOpt = select ? select.options[select.selectedIndex] : null;
-    const voice = selectedOpt ? selectedOpt.value : "BV074_streaming";
-    const resource_id = selectedOpt ? selectedOpt.getAttribute("data-resource") : null;
-    const rate = parseFloat(document.getElementById("audioRateSlider")?.value) || 1.0;
-    const threads = parseInt(document.getElementById("audioThreadsSlider")?.value, 10) || 30;
-
-    this.setAudioUiState(true);
-
-    const progressBox = document.getElementById("audioProgressBox");
-    const progressMsg = document.getElementById("audioProgressMsg");
-    const progressPct = document.getElementById("audioProgressPct");
-    const progressBar = document.getElementById("audioProgressBar");
-    const statusBadge = document.getElementById("audioStatusBadge");
-    const playerTitle = document.getElementById("audioPlayerTitle");
-    const playerSubtitle = document.getElementById("audioPlayerSubtitle");
-    const mainAudio = document.getElementById("mainAudioElement");
-
-    if (progressBox) progressBox.style.display = "block";
-    if (statusBadge) {
-      statusBadge.textContent = "Đang Tạo...";
-      statusBadge.className = "badge badge-pink";
-    }
-
-    const onProgress = (p) => {
-      if (progressMsg) progressMsg.textContent = p.message;
-      if (progressPct) progressPct.textContent = `${p.progress}%`;
-      if (progressBar) progressBar.style.width = `${p.progress}%`;
-    };
-
-    try {
-      const result = await audioTtsService.generateAudioAsync({
-        text,
-        voice,
-        resource_id,
-        rate,
-        threads
-      }, onProgress);
-
-      this.currentAudioBlob = result.audioBlob;
-
-      if (mainAudio) {
-        mainAudio.src = result.audioUrl;
-        mainAudio.play().catch(() => {});
-      }
-
-      if (playerTitle) {
-        playerTitle.textContent = selectedOpt ? selectedOpt.textContent : "Audio Đã Tạo";
-      }
-      if (playerSubtitle) {
-        playerSubtitle.textContent = `Thời lượng: ${result.duration || 0}s • ${result.totalChunks} đoạn ghép nối`;
-      }
-      if (statusBadge) {
-        statusBadge.textContent = "Hoàn Thành";
-        statusBadge.className = "badge badge-emerald";
-      }
-
-      const btnDownload = document.getElementById("btnDownloadMp3");
-      const btnSaveLib = document.getElementById("btnSaveAudioToLib");
-      if (btnDownload) btnDownload.disabled = false;
-      if (btnSaveLib) btnSaveLib.disabled = false;
-
-      this.showToast("🎉 Tạo file Audio thành công!", "success");
-
-    } catch (err) {
-      console.error("Audio generation error:", err);
-      this.showToast(`Lỗi tạo Audio: ${err.message}`, "error");
-      if (statusBadge) {
-        statusBadge.textContent = "Thất Bại";
-        statusBadge.className = "badge badge-rose";
-      }
-    } finally {
-      this.setAudioUiState(false);
-    }
-  }
-
-  setAudioUiState(isGenerating) {
-    const btnStart = document.getElementById("btnStartGenerateAudio");
-    const btnCancel = document.getElementById("btnCancelGenerateAudio");
-    const progressBox = document.getElementById("audioProgressBox");
-
-    if (isGenerating) {
-      if (btnStart) btnStart.style.display = "none";
-      if (btnCancel) btnCancel.style.display = "inline-flex";
-      if (progressBox) progressBox.style.display = "block";
-    } else {
-      if (btnStart) btnStart.style.display = "inline-flex";
-      if (btnCancel) btnCancel.style.display = "none";
-    }
-  }
-
-  cancelAudioGeneration() {
-    if (confirm("Bạn có chắc muốn hủy tiến trình tạo audio không?")) {
-      audioTtsService.cancel();
-      this.setAudioUiState(false);
-      this.showToast("Đã hủy tạo audio.", "warning");
-    }
-  }
-
-  downloadGeneratedMp3() {
-    if (!this.currentAudioBlob && !audioTtsService.currentAudioUrl) {
-      this.showToast("Chưa có file audio để tải về!", "warning");
-      return;
-    }
-    const url = audioTtsService.currentAudioUrl;
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `audio_truyen_${Date.now()}.mp3`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    this.showToast("Đang tải file MP3 về máy...", "success");
-  }
-
-  saveGeneratedAudioToLibrary() {
-    const input = document.getElementById("audioTextInput");
-    const text = input ? input.value : "";
-    if (!text) return;
-    this.showToast("Bản ghi âm đã sẵn sàng trong phiên làm việc hiện tại!", "info");
-  }
-
-  async saveTranslatedToLibrary() {
-    const content = document.getElementById("transResultOutput")?.value || "";
-    if (!content) {
-      this.showToast("Chưa có bản dịch để lưu!", "warning");
-      return;
-    }
-
-    const title = prompt("Nhập tiêu đề cho bộ truyện này:", `Truyện Dịch - ${new Date().toLocaleDateString("vi-VN")}`);
-    if (!title) return;
-
-    const words = content.trim().split(/\s+/).filter(Boolean).length;
-    const storyObj = {
-      id: `story_trans_${Date.now()}`,
-      title,
-      outline: {
-        title,
-        premise: "Tác phẩm dịch thuật",
-        characters: []
-      },
-      chapters: [
-        {
-          chapterNumber: 1,
-          title: "Toàn Văn Bản Dịch",
-          content: content,
-          wordCount: words,
-          status: "completed"
-        }
-      ],
-      params: {
-        selectedTags: ["Truyện Dịch", "Bản Dịch AI"]
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    await storageService.saveStory(storyObj);
-    await this.updateSavedCount();
-    this.showToast(`Đã lưu "${title}" vào Thư Viện Studio!`, "success");
+    if (btnOpenAdmin) btnOpenAdmin.addEventListener("click", () => this.openAdminPanelModal());
+    if (btnCloseAdmin) btnCloseAdmin.addEventListener("click", () => this.closeAdminPanelModal());
   }
 }
 

@@ -813,7 +813,7 @@ export class NovelController {
 
   pauseWriting() {
     this.isPaused = !this.isPaused;
-    const btn = document.getElementById("btnPauseWriting");
+    const btn = document.getElementById("btnPauseResumeWriting") || document.getElementById("btnPauseWriting");
     if (btn) {
       btn.textContent = this.isPaused ? "▶️ Tiếp Tục" : "⏸️ Tạm Dừng";
     }
@@ -824,7 +824,7 @@ export class NovelController {
     this.isWriting = false;
     this.isPaused = false;
     const btnStart = document.getElementById("btnStartWriting");
-    const btnPause = document.getElementById("btnPauseWriting");
+    const btnPause = document.getElementById("btnPauseResumeWriting") || document.getElementById("btnPauseWriting");
     const btnStop = document.getElementById("btnStopWriting");
 
     if (btnStart) btnStart.style.display = "inline-flex";
@@ -1112,10 +1112,16 @@ export class NovelController {
       btnToggleAdd.addEventListener("click", () => this.toggleCustomTagPanel());
     }
 
-    const btnSubmitTag = document.getElementById("btnSubmitCustomTag");
+    const btnSubmitTag = document.getElementById("btnAddCustomTag") || document.getElementById("btnSubmitCustomTag");
     const customTagInput = document.getElementById("customTagInput");
-    if (btnSubmitTag && customTagInput) {
-      btnSubmitTag.addEventListener("click", () => this.addCustomTag(customTagInput.value));
+    if (btnSubmitTag) {
+      btnSubmitTag.addEventListener("click", () => {
+        const val = customTagInput ? customTagInput.value : "";
+        this.addCustomTag(val);
+      });
+    }
+
+    if (customTagInput) {
       customTagInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
           e.preventDefault();
@@ -1124,7 +1130,7 @@ export class NovelController {
       });
     }
 
-    const btnCancelTag = document.getElementById("btnCancelCustomTag");
+    const btnCancelTag = document.getElementById("btnCloseAddTag") || document.getElementById("btnCancelCustomTag");
     if (btnCancelTag) {
       btnCancelTag.addEventListener("click", () => this.toggleCustomTagPanel(false));
     }
@@ -1163,7 +1169,7 @@ export class NovelController {
       btnStartWriting.addEventListener("click", () => this.startWritingStory());
     }
 
-    const btnPauseWriting = document.getElementById("btnPauseWriting");
+    const btnPauseWriting = document.getElementById("btnPauseResumeWriting") || document.getElementById("btnPauseWriting");
     if (btnPauseWriting) {
       btnPauseWriting.addEventListener("click", () => this.pauseWriting());
     }

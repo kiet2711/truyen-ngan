@@ -1285,7 +1285,8 @@ body {
   padding: 20px;
 }
 
-.modal-backdrop.open {
+.modal-backdrop.open,
+.modal-backdrop.active {
   opacity: 1;
   visibility: visible;
 }
@@ -1304,7 +1305,8 @@ body {
   transition: transform 0.25s ease;
 }
 
-.modal-backdrop.open .modal-window {
+.modal-backdrop.open .modal-window,
+.modal-backdrop.active .modal-window {
   transform: scale(1);
 }
 

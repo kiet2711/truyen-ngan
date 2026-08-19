@@ -18,6 +18,7 @@ class NovelStudioApp {
   constructor() {
     this.currentWorkspace = "novel"; // "novel" | "translator" | "audio"
     this.adminUsers = [];
+    this.adminStories = [];
 
     // Khởi tạo 3 Controller chuyên trách cho 3 Tab
     this.novelController = new NovelController(this);
@@ -282,7 +283,7 @@ class NovelStudioApp {
   async updateSavedCount() {
     const stories = await storageService.getAllStories();
     const count = stories.length;
-    const el = document.getElementById("savedStoryCount") || document.getElementById("savedStoriesCount");
+    const el = document.getElementById("savedStoryCount");
     if (el) el.textContent = count;
   }
 
@@ -308,287 +309,478 @@ class NovelStudioApp {
       const user = await authService.init();
       if (user) {
         // Load cloud custom tags
-        const cloudTags = await authService.getUserTags();
-        if (cloudTags && cloudTags.length > 0) {
+        const cloudTags = await authService.fetchUserTags();
+        if (cloudTags && Array.isArray(cloudTags)) {
           this.novelController.customTags = cloudTags;
           storageService.saveCustomTags(cloudTags);
           this.novelController.renderTropeCloud();
         }
 
-        // Load cloud stories
-        const cloudStories = await authService.getUserStories();
-        if (cloudStories && cloudStories.length > 0) {
-          for (const s of cloudStories) {
-            await storageService.saveStory(s);
-          }
-          await this.updateSavedCount();
-        }
+        // Load cloud API settings & keys
+        await this.syncUserApiSettingsFromCloud();
+      }
+    } catch (err) {
+      this.showToast(err.message, "error");
+    }
+  }
 
-        // Load cloud API settings
-        const cloudSettings = await authService.getUserApiSettings();
-        if (cloudSettings) {
-          if (cloudSettings.keys && cloudSettings.keys.length > 0) {
-            storageService.saveApiKeys(cloudSettings.keys);
-          }
-          if (cloudSettings.settings) {
-            storageService.saveSettings(cloudSettings.settings);
-          }
-          this.updateApiKeyStatus();
+  async syncUserApiSettingsFromCloud() {
+    if (!authService.isLoggedIn()) return;
+    try {
+      const cloudData = await authService.fetchUserApiSettings();
+      if (cloudData) {
+        if (Array.isArray(cloudData.api_keys) && cloudData.api_keys.length > 0) {
+          storageService.saveApiKeys(cloudData.api_keys);
         }
+        if (cloudData.settings && typeof cloudData.settings === 'object' && Object.keys(cloudData.settings).length > 0) {
+          storageService.saveSettings(cloudData.settings);
+        }
+        this.updateApiKeyStatus();
       }
     } catch (e) {
-      console.warn("Auth initialization error (offline fallback mode):", e);
+      console.warn("Sync API settings error:", e);
     }
   }
 
   renderUserHeader(user) {
-    const userContainer = document.getElementById("headerUserSection");
-    if (!userContainer) return;
+    const btnOpenAuth = document.getElementById("btnOpenAuth");
+    const userProfileWidget = document.getElementById("userProfileWidget");
+    const headerUsername = document.getElementById("headerUsername");
+    const headerUserRoleBadge = document.getElementById("headerUserRoleBadge");
+    const dropdownUsername = document.getElementById("dropdownUsername");
+    const dropdownUserEmail = document.getElementById("dropdownUserEmail");
+    const btnOpenAdminPanel = document.getElementById("btnOpenAdminPanel");
 
     if (user) {
-      const roleBadge = user.role === "admin" 
-        ? `<span class="badge badge-pink" style="font-size: 10px; margin-left: 4px;">👑 Quản Trị Viên</span>`
-        : `<span class="badge badge-purple" style="font-size: 10px; margin-left: 4px;">Tác Giả</span>`;
+      if (btnOpenAuth) btnOpenAuth.style.display = "none";
+      if (userProfileWidget) userProfileWidget.style.display = "block";
 
-      userContainer.innerHTML = `
-        <div class="user-profile-badge" id="btnUserMenu" title="Tài khoản: ${user.email}">
-          <span class="user-avatar">${user.name ? user.name[0].toUpperCase() : '👤'}</span>
-          <span class="user-name">${user.name || user.username}</span>
-          ${roleBadge}
-        </div>
-      `;
+      if (headerUsername) headerUsername.textContent = user.username;
+      if (dropdownUsername) dropdownUsername.textContent = user.username;
+      if (dropdownUserEmail) dropdownUserEmail.textContent = user.email;
 
-      document.getElementById("btnUserMenu")?.addEventListener("click", () => {
-        this.openUserProfileModal(user);
-      });
+      if (headerUserRoleBadge) {
+        if (user.role === "admin") {
+          headerUserRoleBadge.className = "badge badge-purple role-pill";
+          headerUserRoleBadge.textContent = "👑 ADMIN";
+        } else {
+          headerUserRoleBadge.className = "badge badge-emerald role-pill";
+          headerUserRoleBadge.textContent = "MEMBER";
+        }
+      }
+
+      if (btnOpenAdminPanel) {
+        btnOpenAdminPanel.style.display = user.role === "admin" ? "flex" : "none";
+      }
     } else {
-      userContainer.innerHTML = `
-        <button class="btn btn-secondary btn-sm" id="btnHeaderLogin">
-          <span>👤</span> Đăng Nhập / Đồng Bộ Cloud
-        </button>
-      `;
-
-      document.getElementById("btnHeaderLogin")?.addEventListener("click", () => {
-        this.openAuthModal();
-      });
+      if (btnOpenAuth) btnOpenAuth.style.display = "inline-flex";
+      if (userProfileWidget) userProfileWidget.style.display = "none";
+      const dropdown = document.getElementById("userDropdownMenu");
+      if (dropdown) dropdown.style.display = "none";
     }
   }
 
-  openAuthModal(initialTab = "login") {
+  openAuthModal(tab = "login") {
     const modal = document.getElementById("authModal");
-    if (!modal) return;
-    modal.classList.add("active");
-    this.switchAuthTab(initialTab);
+    const alertBox = document.getElementById("authAlertBox");
+    if (alertBox) {
+      alertBox.style.display = "none";
+      alertBox.textContent = "";
+    }
+    this.switchAuthTab(tab);
+    if (modal) modal.classList.add("open");
   }
 
   closeAuthModal() {
     const modal = document.getElementById("authModal");
-    if (modal) modal.classList.remove("active");
+    if (modal) modal.classList.remove("open");
   }
 
   switchAuthTab(tab) {
-    const tabLogin = document.getElementById("authTabLogin");
-    const tabReg = document.getElementById("authTabRegister");
-    const formLogin = document.getElementById("authFormLogin");
-    const formReg = document.getElementById("authFormRegister");
+    const tabLogin = document.getElementById("tabAuthLogin");
+    const tabRegister = document.getElementById("tabAuthRegister");
+    const formLogin = document.getElementById("loginForm");
+    const formRegister = document.getElementById("registerForm");
+    const title = document.getElementById("authModalTitle");
+    const alertBox = document.getElementById("authAlertBox");
+
+    if (alertBox) {
+      alertBox.style.display = "none";
+      alertBox.textContent = "";
+    }
 
     if (tab === "register") {
       tabLogin?.classList.remove("active");
-      tabReg?.classList.add("active");
+      tabRegister?.classList.add("active");
       if (formLogin) formLogin.style.display = "none";
-      if (formReg) formReg.style.display = "block";
+      if (formRegister) formRegister.style.display = "block";
+      if (title) title.textContent = "✨ Tạo Tài Khoản Mới";
     } else {
       tabLogin?.classList.add("active");
-      tabReg?.classList.remove("active");
+      tabRegister?.classList.remove("active");
       if (formLogin) formLogin.style.display = "block";
-      if (formReg) formReg.style.display = "none";
+      if (formRegister) formRegister.style.display = "none";
+      if (title) title.textContent = "🔐 Đăng Nhập Tài Khoản";
     }
   }
 
-  async handleLogin() {
-    const email = document.getElementById("loginEmail")?.value?.trim();
-    const pass = document.getElementById("loginPassword")?.value;
+  async handleLogin(e) {
+    e.preventDefault();
+    const identifier = document.getElementById("loginIdentifier").value.trim();
+    const password = document.getElementById("loginPassword").value;
     const btn = document.getElementById("btnLoginSubmit");
-    const errEl = document.getElementById("authErrorMsg");
+    const alertBox = document.getElementById("authAlertBox");
 
-    if (!email || !pass) {
-      if (errEl) errEl.textContent = "Vui lòng nhập đầy đủ email và mật khẩu!";
-      return;
-    }
-
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = `<span class="typing-cursor"></span> Đang đăng nhập...`;
-    }
-    if (errEl) errEl.textContent = "";
+    btn.disabled = true;
+    btn.innerHTML = `<span class="typing-cursor"></span> Đang đăng nhập...`;
 
     try {
-      const user = await authService.login(email, pass);
-      this.showToast(`Chào mừng bạn trở lại, ${user.name || user.username}! 🌟`, "success");
+      const user = await authService.login(identifier, password);
+      this.showToast(`Chào mừng bạn trở lại, ${user.username}! 🎉`, "success");
       this.closeAuthModal();
-      await this.initAuth();
-    } catch (err) {
-      if (errEl) errEl.textContent = err.message || "Đăng nhập thất bại!";
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = `Đăng Nhập Ngay`;
+
+      // Đồng bộ tags và settings sau khi đăng nhập
+      const cloudTags = await authService.fetchUserTags();
+      if (cloudTags && Array.isArray(cloudTags) && cloudTags.length > 0) {
+        this.novelController.customTags = cloudTags;
+        storageService.saveCustomTags(cloudTags);
+        this.novelController.renderTropeCloud();
       }
+      await this.syncUserApiSettingsFromCloud();
+
+    } catch (err) {
+      if (alertBox) {
+        alertBox.textContent = err.message;
+        alertBox.style.display = "block";
+      }
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `🚀 Đăng Nhập`;
     }
   }
 
-  async handleRegister() {
-    const name = document.getElementById("regName")?.value?.trim();
-    const username = document.getElementById("regUsername")?.value?.trim();
-    const email = document.getElementById("regEmail")?.value?.trim();
-    const pass = document.getElementById("regPassword")?.value;
-    const passConfirm = document.getElementById("regPasswordConfirm")?.value;
+  async handleRegister(e) {
+    e.preventDefault();
+    const username = document.getElementById("regUsername").value.trim();
+    const email = document.getElementById("regEmail").value.trim();
+    const password = document.getElementById("regPassword").value;
+    const confirm = document.getElementById("regPasswordConfirm").value;
     const btn = document.getElementById("btnRegisterSubmit");
-    const errEl = document.getElementById("authErrorMsg");
+    const alertBox = document.getElementById("authAlertBox");
 
-    if (!username || !email || !pass) {
-      if (errEl) errEl.textContent = "Vui lòng điền đầy đủ các thông tin bắt buộc!";
+    if (password !== confirm) {
+      if (alertBox) {
+        alertBox.textContent = "Mật khẩu xác nhận không khớp!";
+        alertBox.style.display = "block";
+      }
       return;
     }
 
-    if (pass !== passConfirm) {
-      if (errEl) errEl.textContent = "Mật khẩu xác nhận không khớp!";
-      return;
-    }
-
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = `<span class="typing-cursor"></span> Đang tạo tài khoản...`;
-    }
-    if (errEl) errEl.textContent = "";
+    btn.disabled = true;
+    btn.innerHTML = `<span class="typing-cursor"></span> Đang tạo tài khoản...`;
 
     try {
-      const user = await authService.register({ username, email, password: pass, name });
-      this.showToast(`Chúc mừng ${user.name || user.username} đã đăng ký tài khoản thành công! 🎉`, "success");
+      const user = await authService.register(username, email, password);
+      this.showToast(`Chào mừng thành viên mới: ${user.username}! 🌟`, "success");
       this.closeAuthModal();
-      await this.initAuth();
     } catch (err) {
-      if (errEl) errEl.textContent = err.message || "Đăng ký thất bại!";
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = `Hoàn Tất Đăng Ký`;
+      if (alertBox) {
+        alertBox.textContent = err.message;
+        alertBox.style.display = "block";
       }
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `✨ Tạo Tài Khoản Ngay`;
     }
   }
 
-  openUserProfileModal(user) {
-    const modal = document.getElementById("userProfileModal");
-    if (!modal) return;
+  // ==================== ADMIN MANAGEMENT ====================
 
-    const nameEl = document.getElementById("profileUserName");
-    const emailEl = document.getElementById("profileUserEmail");
-    const roleEl = document.getElementById("profileUserRole");
-    const adminBtn = document.getElementById("btnOpenAdminPanel");
-
-    if (nameEl) nameEl.textContent = user.name || user.username;
-    if (emailEl) emailEl.textContent = user.email;
-    if (roleEl) roleEl.textContent = user.role === "admin" ? "Quản Trị Viên Hệ Thống" : "Tác Giả";
-
-    if (adminBtn) {
-      adminBtn.style.display = user.role === "admin" ? "inline-flex" : "none";
+  async openAdminModal() {
+    if (!authService.isAdmin()) {
+      this.showToast("Bạn không có quyền truy cập trang Quản trị Admin!", "error");
+      return;
     }
 
-    modal.classList.add("active");
+    document.getElementById("adminModal").classList.add("open");
+    await this.loadAdminData();
   }
 
-  closeUserProfileModal() {
-    const modal = document.getElementById("userProfileModal");
-    if (modal) modal.classList.remove("active");
+  closeAdminModal() {
+    document.getElementById("adminModal").classList.remove("open");
   }
 
-  async openAdminPanelModal() {
-    this.closeUserProfileModal();
-    const modal = document.getElementById("adminPanelModal");
-    if (!modal) return;
-    modal.classList.add("active");
-    await this.loadAdminUsersList();
+  switchAdminTab(tab) {
+    const tabUsers = document.getElementById("tabAdminUsers");
+    const tabStories = document.getElementById("tabAdminStories");
+    const viewUsers = document.getElementById("adminViewUsers");
+    const viewStories = document.getElementById("adminViewStories");
+
+    if (tab === "stories") {
+      tabUsers?.classList.remove("active");
+      tabStories?.classList.add("active");
+      if (viewUsers) viewUsers.style.display = "none";
+      if (viewStories) viewStories.style.display = "block";
+    } else {
+      tabUsers?.classList.add("active");
+      tabStories?.classList.remove("active");
+      if (viewUsers) viewUsers.style.display = "block";
+      if (viewStories) viewStories.style.display = "none";
+    }
   }
 
-  closeAdminPanelModal() {
-    const modal = document.getElementById("adminPanelModal");
-    if (modal) modal.classList.remove("active");
-  }
-
-  async loadAdminUsersList() {
-    const tbody = document.getElementById("adminUserTableBody");
-    if (!tbody) return;
-
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-dim);"><span class="typing-cursor"></span> Đang tải danh sách người dùng từ Neon DB...</td></tr>`;
+  async loadAdminData() {
+    const tableBody = document.getElementById("adminUsersTableBody");
+    const storiesContainer = document.getElementById("adminStoriesListContainer");
+    if (tableBody) tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 24px;"><span class="typing-cursor"></span> Đang tải dữ liệu từ Neon DB...</td></tr>`;
+    if (storiesContainer) storiesContainer.innerHTML = `<div style="text-align: center; padding: 24px; color: var(--text-dim);"><span class="typing-cursor"></span> Đang tải danh sách truyện...</div>`;
 
     try {
-      this.adminUsers = await authService.getAdminUsersList();
-      if (this.adminUsers.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-dim);">Chưa có người dùng nào</td></tr>`;
-        return;
+      const stats = await authService.adminGetStats();
+      if (stats) {
+        document.getElementById("statTotalUsers").textContent = stats.totalUsers || 0;
+        document.getElementById("statActiveUsers").textContent = stats.activeUsers || 0;
+        document.getElementById("statBannedUsers").textContent = stats.bannedUsers || 0;
+        document.getElementById("statTotalStories").textContent = stats.totalStories || 0;
       }
 
-      tbody.innerHTML = this.adminUsers.map(u => `
-        <tr>
-          <td><strong>#${u.id}</strong></td>
-          <td>${u.name || u.username}</td>
-          <td><code>${u.email}</code></td>
-          <td><span class="badge ${u.role === 'admin' ? 'badge-pink' : 'badge-purple'}">${u.role}</span></td>
-          <td style="font-size: 11px; color: var(--text-dim);">${new Date(u.created_at).toLocaleDateString("vi-VN")}</td>
-          <td>
-            ${u.role !== 'admin' ? `
-              <button class="btn btn-secondary btn-xs btn-change-role" data-uid="${u.id}" data-role="${u.role}">
-                Đổi thành Admin
-              </button>
-            ` : `<span style="font-size: 11px; color: var(--accent-emerald);">Tối cao</span>`}
-          </td>
-        </tr>
-      `).join("");
+      // Load Users & Stories
+      this.adminUsers = await authService.adminGetUsers();
+      this.adminStories = await authService.adminGetAllStories();
 
-      tbody.querySelectorAll(".btn-change-role").forEach(btn => {
-        btn.addEventListener("click", async (e) => {
-          const uid = e.target.getAttribute("data-uid");
-          const curRole = e.target.getAttribute("data-role");
-          const nextRole = curRole === "admin" ? "user" : "admin";
-          if (confirm(`Bạn có chắc muốn nâng cấp người dùng #${uid} thành ${nextRole}?`)) {
-            await authService.updateUserRole(uid, nextRole);
-            this.showToast("Đã cập nhật quyền thành công!", "success");
-            await this.loadAdminUsersList();
+      const totalStories = this.adminStories.length;
+      const totalStoriesBadge = document.getElementById("adminTotalStoryBadge");
+      if (totalStoriesBadge) totalStoriesBadge.textContent = totalStories;
+      const statTotalStories = document.getElementById("statTotalStories");
+      if (statTotalStories) statTotalStories.textContent = totalStories;
+
+      this.renderAdminUsersTable(this.adminUsers);
+      this.renderAdminStoriesList(this.adminStories);
+    } catch (err) {
+      console.error(err);
+      if (tableBody) tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--accent-rose); padding: 20px;">Lỗi tải dữ liệu: ${err.message}</td></tr>`;
+      this.showToast(`Lỗi admin: ${err.message}`, "error");
+    }
+  }
+
+  renderAdminUsersTable(users) {
+    const tableBody = document.getElementById("adminUsersTableBody");
+    if (!tableBody) return;
+    tableBody.innerHTML = "";
+
+    if (!users || users.length === 0) {
+      tableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">Không tìm thấy người dùng nào.</td></tr>`;
+      return;
+    }
+
+    users.forEach(user => {
+      const tr = document.createElement("tr");
+
+      const isCurrentLoggedIn = authService.currentUser?.id === user.id;
+      const roleBadge = user.role === "admin"
+        ? `<span class="badge badge-purple" style="font-size: 11px;">👑 ADMIN</span>`
+        : `<span class="badge badge-emerald" style="font-size: 11px;">USER</span>`;
+
+      const statusBadge = user.is_banned
+        ? `<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; font-size: 11px;">🚫 ĐÃ KHÓA</span>`
+        : `<span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 11px;">🟢 BÌNH THƯỜNG</span>`;
+
+      const storyCount = user.story_count || 0;
+      const storyCountHtml = storyCount > 0
+        ? `<button class="btn btn-secondary btn-xs btn-view-user-stories" data-user-id="${user.id}" data-username="${user.username}" title="Xem truyện của tác giả này" style="color: var(--accent-pink); font-weight: 700;">
+             📖 ${storyCount} truyện
+           </button>`
+        : `<span style="color: var(--text-dim); font-size: 12px;">0</span>`;
+
+      tr.innerHTML = `
+        <td><span style="color: var(--text-dim); font-family: monospace;">#${user.id}</span></td>
+        <td><strong>${user.username}</strong> ${isCurrentLoggedIn ? '<span style="font-size: 10px; color: var(--accent-pink);">(Bạn)</span>' : ''}</td>
+        <td style="color: var(--text-main); font-size: 12px;">${user.email}</td>
+        <td>${roleBadge}</td>
+        <td><span class="badge" style="background: rgba(255,255,255,0.06);">${(user.custom_tags || []).length} tags</span></td>
+        <td>${storyCountHtml}</td>
+        <td>${statusBadge}</td>
+        <td style="text-align: right;">
+          <div style="display: flex; gap: 6px; justify-content: flex-end;">
+            ${!isCurrentLoggedIn ? `
+              <button class="btn btn-secondary btn-xs btn-toggle-role" data-id="${user.id}" data-role="${user.role}">
+                ${user.role === 'admin' ? 'Hạ Quyền User' : '⭐ Thăng Admin'}
+              </button>
+              <button class="btn ${user.is_banned ? 'btn-success' : 'btn-danger'} btn-xs btn-toggle-ban" data-id="${user.id}" data-banned="${user.is_banned}">
+                ${user.is_banned ? '🔓 Mở Khóa' : '🚫 Khóa'}
+              </button>
+            ` : '<span style="font-size: 11px; color: var(--text-dim);">Đang dùng</span>'}
+          </div>
+        </td>
+      `;
+
+      // Event listeners for action buttons
+      const btnToggleRole = tr.querySelector(".btn-toggle-role");
+      if (btnToggleRole) {
+        btnToggleRole.addEventListener("click", async () => {
+          const newRole = user.role === "admin" ? "user" : "admin";
+          if (confirm(`Bạn có chắc muốn đổi quyền của "${user.username}" thành "${newRole.toUpperCase()}"?`)) {
+            try {
+              await authService.adminUpdateUserRole(user.id, newRole);
+              this.showToast(`Đã cập nhật quyền cho ${user.username}!`, "success");
+              await this.loadAdminData();
+            } catch (e) {
+              this.showToast(e.message, "error");
+            }
           }
         });
+      }
+
+      const btnToggleBan = tr.querySelector(".btn-toggle-ban");
+      if (btnToggleBan) {
+        btnToggleBan.addEventListener("click", async () => {
+          const newStatus = !user.is_banned;
+          const actionText = newStatus ? "KHÓA TÀI KHOẢN" : "MỞ KHÓA TÀI KHOẢN";
+          if (confirm(`Bạn có chắc muốn ${actionText} của "${user.username}"?`)) {
+            try {
+              await authService.adminUpdateUserStatus(user.id, newStatus);
+              this.showToast(`Đã ${actionText.toLowerCase()} ${user.username}!`, "success");
+              await this.loadAdminData();
+            } catch (e) {
+              this.showToast(e.message, "error");
+            }
+          }
+        });
+      }
+
+      const btnViewStories = tr.querySelector(".btn-view-user-stories");
+      if (btnViewStories) {
+        btnViewStories.addEventListener("click", () => {
+          const filterBadge = document.getElementById("adminStoriesAuthorFilterBadge");
+          const filterName = document.getElementById("adminFilterAuthorName");
+          if (filterBadge && filterName) {
+            filterName.textContent = `${user.username} (#${user.id})`;
+            filterBadge.style.display = "flex";
+          }
+          this.switchAdminTab("stories");
+          const userStories = this.adminStories.filter(s => s.user_id === user.id);
+          this.renderAdminStoriesList(userStories);
+        });
+      }
+
+      tableBody.appendChild(tr);
+    });
+  }
+
+  filterAdminUsers(query) {
+    const q = query.toLowerCase().trim();
+    if (!q) {
+      this.renderAdminUsersTable(this.adminUsers);
+      return;
+    }
+    const filtered = this.adminUsers.filter(u =>
+      u.username.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q) ||
+      String(u.id).includes(q)
+    );
+    this.renderAdminUsersTable(filtered);
+  }
+
+  renderAdminStoriesList(stories) {
+    const container = document.getElementById("adminStoriesListContainer");
+    if (!container) return;
+    container.innerHTML = "";
+
+    if (!stories || stories.length === 0) {
+      container.innerHTML = `<div style="text-align: center; padding: 32px; color: var(--text-dim);">Không có tác phẩm nào phù hợp.</div>`;
+      return;
+    }
+
+    stories.forEach(story => {
+      const card = document.createElement("div");
+      card.className = "studio-card";
+      card.style.padding = "16px";
+      card.style.background = "rgba(15, 23, 42, 0.6)";
+
+      const totalWords = story.chapters?.reduce((sum, c) => sum + (c.wordCount || 0), 0) || 0;
+      const completedCount = story.chapters?.filter(c => c.status === "completed").length || 0;
+      const totalChapters = story.chapters?.length || 0;
+
+      card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <strong style="font-size: 16px; color: #fff;">${story.title || 'Truyện Không Tên'}</strong>
+              <span class="badge badge-purple" style="font-size: 11px;">✍️ Tác giả: <strong>${story.author_username || 'Tác giả #' + story.user_id}</strong></span>
+              <span class="badge badge-pink" style="font-size: 10px;">${story.params?.tone || 'Zhihu High Drama'}</span>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+              ${story.concept?.premise || 'Chưa có tóm tắt cốt truyện.'}
+            </div>
+            <div style="display: flex; gap: 12px; align-items: center; margin-top: 8px; font-size: 11.5px; color: var(--text-dim);">
+              <span>📅 ${new Date(story.created_at || story.createdAt).toLocaleString("vi-VN")}</span>
+              <span>•</span>
+              <span>📝 ${totalChapters} chương (${completedCount} xong)</span>
+              <span>•</span>
+              <span style="color: var(--accent-emerald); font-weight: 600;">⚡ ${totalWords.toLocaleString()} từ</span>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-primary btn-sm btn-admin-read-story" title="Đọc tác phẩm này">
+              📖 Đọc Truyện
+            </button>
+          </div>
+        </div>
+      `;
+
+      card.querySelector(".btn-admin-read-story").addEventListener("click", () => {
+        this.novelController.currentStory = story;
+        this.closeAdminModal();
+        this.switchWorkspace("novel");
+        this.novelController.setupStep4View();
+        this.novelController.goToStep(4);
+        this.showToast(`Đang mở tác phẩm: "${story.title}" của ${story.author_username}`, "info");
       });
 
-    } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--accent-rose);">✕ Lỗi: ${err.message}</td></tr>`;
+      container.appendChild(card);
+    });
+  }
+
+  filterAdminStories(query) {
+    const q = query.toLowerCase().trim();
+    if (!q) {
+      this.renderAdminStoriesList(this.adminStories);
+      return;
     }
+    const filtered = this.adminStories.filter(s =>
+      (s.title || "").toLowerCase().includes(q) ||
+      (s.author_username || "").toLowerCase().includes(q) ||
+      (s.concept?.premise || "").toLowerCase().includes(q)
+    );
+    this.renderAdminStoriesList(filtered);
   }
 
   // ==================== API SETTINGS & STORY LIBRARY MODALS ====================
 
   openApiSettingsModal() {
-    const modal = document.getElementById("apiSettingsModal");
-    const input = document.getElementById("apiKeysInput");
-    const throttleInput = document.getElementById("throttleDelayInput");
-    const chapterTempInput = document.getElementById("chapterTempInput");
-    const modelSelect = document.getElementById("modelSelect");
+    const keys = storageService.getApiKeys();
+    const settings = storageService.getSettings();
 
-    if (modal) {
-      const keys = storageService.getApiKeys();
-      const settings = storageService.getSettings();
+    document.getElementById("apiKeysInput").value = keys.join("\n");
+    document.getElementById("modelSelect").value = settings.model || "gemini-3.6-flash";
+    document.getElementById("throttleDelayInput").value = settings.delayBetweenChapters || 3500;
+    document.getElementById("chapterTempInput").value = settings.temperatureChapter || 0.8;
+    document.getElementById("apiTestResult").textContent = "";
 
-      if (input) input.value = keys.join("\n");
-      if (throttleInput) throttleInput.value = settings.delayBetweenChapters || 3500;
-      if (chapterTempInput) chapterTempInput.value = settings.temperatureChapter || 0.8;
-      if (modelSelect) modelSelect.value = settings.model || "gemini-3.6-flash";
-
-      modal.classList.add("active");
-      this.updateQuotaDisplay(modelSelect?.value);
-    }
+    this.updateQuotaDisplay();
+    document.getElementById("apiSettingsModal").classList.add("open");
   }
 
   closeApiSettingsModal() {
-    const modal = document.getElementById("apiSettingsModal");
-    if (modal) modal.classList.remove("active");
+    document.getElementById("apiSettingsModal").classList.remove("open");
+  }
+
+  clearApiUsageStats() {
+    if (confirm("Bạn có chắc chắn muốn đặt lại bộ đếm token và request về 0 không?")) {
+      storageService.clearApiUsageStats();
+      this.updateQuotaDisplay();
+      this.showToast("Đã đặt lại toàn bộ thống kê API!", "info");
+    }
   }
 
   async saveApiSettings() {
@@ -607,7 +799,7 @@ class NovelStudioApp {
       await authService.saveUserApiSettings(keys, settings);
       this.showToast("Đã lưu và đồng bộ API Key lên tài khoản Neon Cloud! ☁️", "success");
     } else {
-      this.showToast("Đã lưu cấu hình API thành công!", "success");
+      this.showToast("Đã lưu cấu hình API Key vào máy!", "success");
     }
 
     this.updateApiKeyStatus();
@@ -617,44 +809,68 @@ class NovelStudioApp {
   async testApiKeyConnection() {
     const rawKeys = document.getElementById("apiKeysInput").value;
     const keys = rawKeys.split("\n").map(k => k.trim()).filter(Boolean);
-    const resEl = document.getElementById("apiTestResult");
+    const resultEl = document.getElementById("apiTestResult");
+    const btn = document.getElementById("btnTestApiKey");
 
     if (keys.length === 0) {
-      resEl.innerHTML = `<span style="color: var(--accent-rose);">Vui lòng nhập API Key trước khi test!</span>`;
+      resultEl.innerHTML = `<span style="color: var(--accent-rose);">✕ Vui lòng nhập ít nhất một API key để test!</span>`;
       return;
     }
 
-    resEl.innerHTML = `<span style="color: var(--accent-pink);"><span class="typing-cursor"></span> Đang kiểm tra kết nối với Gemini...</span>`;
+    btn.disabled = true;
+    btn.textContent = "Đang kiểm tra...";
+    resultEl.innerHTML = `<span style="color: var(--text-dim);"><span class="typing-cursor"></span> Đang gửi tín hiệu kiểm tra tới Gemini API...</span>`;
+
+    const modelId = document.getElementById("modelSelect").value || "gemini-3.6-flash";
+    const originalKeys = storageService.getApiKeys();
+    storageService.saveApiKeys(keys);
 
     try {
-      const model = document.getElementById("modelSelect").value;
-      const resp = await geminiService.testApiKey(keys[0], model);
-      resEl.innerHTML = `<span style="color: var(--accent-emerald);">✓ Kết nối thành công! AI phản hồi: "${resp}"</span>`;
-    } catch (err) {
-      resEl.innerHTML = `<span style="color: var(--accent-rose);">✕ Lỗi kết nối: ${err.message}</span>`;
+      const isOk = await geminiService.testKey(keys[0], modelId);
+      if (isOk) {
+        resultEl.innerHTML = `<span style="color: var(--accent-emerald);">✓ Kết nối Gemini API (${modelId}) thành công và hợp lệ!</span>`;
+      } else {
+        resultEl.innerHTML = `<span style="color: var(--accent-rose);">✕ API Key không hợp lệ hoặc model không khả dụng.</span>`;
+      }
+    } catch (e) {
+      resultEl.innerHTML = `<span style="color: var(--accent-rose);">✕ Lỗi kết nối: ${e.message}</span>`;
+    } finally {
+      storageService.saveApiKeys(originalKeys);
+      btn.disabled = false;
+      btn.textContent = "🔍 Test Kết Nối";
     }
   }
 
   async openStoryLibraryModal() {
-    const modal = document.getElementById("storyLibraryModal");
-    const container = document.getElementById("libraryStoriesList");
-    if (!modal || !container) return;
-
-    modal.classList.add("active");
-    container.innerHTML = `<div style="text-align: center; padding: 30px; color: var(--text-dim);"><span class="typing-cursor"></span> Đang tải danh sách tác phẩm...</div>`;
-
     const stories = await storageService.getAllStories();
+    this.renderLibraryList(stories);
+    document.getElementById("storyLibraryModal").classList.add("open");
+  }
+
+  closeStoryLibraryModal() {
+    document.getElementById("storyLibraryModal").classList.remove("open");
+  }
+
+  async filterLibraryStories(query) {
+    const stories = await storageService.getAllStories();
+    const q = query.toLowerCase().trim();
+    const filtered = stories.filter(s =>
+      (s.title || "").toLowerCase().includes(q) ||
+      (s.params?.selectedTags || []).some(t => t.toLowerCase().includes(q))
+    );
+    this.renderLibraryList(filtered);
+  }
+
+  renderLibraryList(stories) {
+    const container = document.getElementById("libraryListContainer");
+    if (!container) return;
+    container.innerHTML = "";
+
     if (stories.length === 0) {
-      container.innerHTML = `
-        <div style="text-align: center; padding: 40px; color: var(--text-dim);">
-          <div style="font-size: 32px; margin-bottom: 8px;">📚</div>
-          <div>Thư viện chưa có tác phẩm nào. Hãy tạo câu chuyện đầu tiên của bạn ở Bước 1!</div>
-        </div>
-      `;
+      container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 24px;">Chưa có truyện nào trong thư viện.</div>`;
       return;
     }
 
-    container.innerHTML = "";
     stories.forEach(story => {
       const card = document.createElement("div");
       card.className = "studio-card";
@@ -668,17 +884,24 @@ class NovelStudioApp {
       card.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
           <div>
-            <div style="font-size: 16px; font-weight: 700; color: #fff;">${story.title}</div>
-            <div style="font-size: 12px; color: var(--accent-pink); margin-top: 2px;">
-              ${(story.params?.selectedTags || []).slice(0, 3).join(", ")} • ${completedCount}/${totalChapters} chương hoàn thành (${totalWords.toLocaleString()} từ)
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <strong style="font-size: 16px;">${story.title}</strong>
+              <span class="badge badge-pink" style="font-size: 10px;">${story.params?.tone || 'Zhihu High Drama'}</span>
             </div>
-            <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">
-              Cập nhật: ${new Date(story.updatedAt).toLocaleString("vi-VN")}
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+              ${story.concept?.premise || 'Chưa có tóm tắt'}
+            </div>
+            <div style="display: flex; gap: 12px; align-items: center; margin-top: 8px; font-size: 11.5px; color: var(--text-dim);">
+              <span>${new Date(story.createdAt).toLocaleDateString("vi-VN")}</span>
+              <span>•</span>
+              <span>${totalChapters} chương (${completedCount} xong)</span>
+              <span>•</span>
+              <span style="color: var(--accent-emerald); font-weight: 600;">${totalWords.toLocaleString()} từ</span>
             </div>
           </div>
           <div style="display: flex; gap: 8px;">
-            <button class="btn btn-primary btn-sm btn-load-story">Mở Xem</button>
-            <button class="btn btn-danger btn-sm btn-del-story">Xóa</button>
+            <button class="btn btn-primary btn-sm btn-load-story">Mở Đọc</button>
+            <button class="btn btn-danger btn-xs btn-delete-story" title="Xóa truyện này">&times;</button>
           </div>
         </div>
       `;
@@ -686,14 +909,14 @@ class NovelStudioApp {
       card.querySelector(".btn-load-story").addEventListener("click", () => {
         this.novelController.currentStory = story;
         this.closeStoryLibraryModal();
-        this.novelController.renderReaderMode();
-        this.novelController.goToStep(4);
         this.switchWorkspace("novel");
+        this.novelController.setupStep4View();
+        this.novelController.goToStep(4);
         this.showToast(`Đã mở truyện: ${story.title}`, "info");
       });
 
-      card.querySelector(".btn-del-story").addEventListener("click", async () => {
-        if (confirm(`Bạn có chắc chắn muốn xóa "${story.title}" không?`)) {
+      card.querySelector(".btn-delete-story").addEventListener("click", async () => {
+        if (confirm(`Bạn có chắc chắn muốn xóa bộ truyện "${story.title}" không?`)) {
           await storageService.deleteStory(story.id);
           await this.updateSavedCount();
           this.openStoryLibraryModal();
@@ -705,18 +928,14 @@ class NovelStudioApp {
     });
   }
 
-  closeStoryLibraryModal() {
-    const modal = document.getElementById("storyLibraryModal");
-    if (modal) modal.classList.remove("active");
-  }
-
   // ==================== GLOBAL EVENT BINDINGS ====================
 
   bindGlobalEvents() {
-    // 1. Workspace Tabs
+    // 1. Workspace Navigation Tabs
     const tabNovel = document.getElementById("tabNavNovelStudio");
     const tabTrans = document.getElementById("tabNavTranslator");
     const tabAudio = document.getElementById("tabNavAudioStudio");
+
     if (tabNovel) tabNovel.addEventListener("click", () => this.switchWorkspace("novel"));
     if (tabTrans) tabTrans.addEventListener("click", () => this.switchWorkspace("translator"));
     if (tabAudio) tabAudio.addEventListener("click", () => this.switchWorkspace("audio"));
@@ -729,76 +948,225 @@ class NovelStudioApp {
       });
     }
 
-    // 2. Modals Triggers
-    const btnOpenSettings = document.getElementById("btnOpenApiSettings");
-    const btnCloseSettings = document.getElementById("btnCloseApiSettings");
-    const btnSaveSettings = document.getElementById("btnSaveApiSettings");
-    const btnTestKey = document.getElementById("btnTestApiKey");
-    const modelSelect = document.getElementById("modelSelect");
+    // 2. Auth Events
+    const btnOpenAuth = document.getElementById("btnOpenAuth");
+    if (btnOpenAuth) {
+      btnOpenAuth.addEventListener("click", () => this.openAuthModal("login"));
+    }
 
-    if (btnOpenSettings) btnOpenSettings.addEventListener("click", () => this.openApiSettingsModal());
-    if (btnCloseSettings) btnCloseSettings.addEventListener("click", () => this.closeApiSettingsModal());
-    if (btnSaveSettings) btnSaveSettings.addEventListener("click", () => this.saveApiSettings());
-    if (btnTestKey) btnTestKey.addEventListener("click", () => this.testApiKeyConnection());
+    const btnCloseAuth = document.getElementById("btnCloseAuth");
+    if (btnCloseAuth) {
+      btnCloseAuth.addEventListener("click", () => this.closeAuthModal());
+    }
 
-    if (modelSelect) {
-      modelSelect.addEventListener("change", (e) => {
+    const tabAuthLogin = document.getElementById("tabAuthLogin");
+    if (tabAuthLogin) {
+      tabAuthLogin.addEventListener("click", () => this.switchAuthTab("login"));
+    }
+
+    const tabAuthRegister = document.getElementById("tabAuthRegister");
+    if (tabAuthRegister) {
+      tabAuthRegister.addEventListener("click", () => this.switchAuthTab("register"));
+    }
+
+    const loginForm = document.getElementById("loginForm");
+    if (loginForm) {
+      loginForm.addEventListener("submit", (e) => this.handleLogin(e));
+    }
+
+    const registerForm = document.getElementById("registerForm");
+    if (registerForm) {
+      registerForm.addEventListener("submit", (e) => this.handleRegister(e));
+    }
+
+    const btnUserDropdown = document.getElementById("btnUserDropdownToggle");
+    const userDropdownMenu = document.getElementById("userDropdownMenu");
+    if (btnUserDropdown && userDropdownMenu) {
+      btnUserDropdown.addEventListener("click", (e) => {
+        e.stopPropagation();
+        userDropdownMenu.style.display = userDropdownMenu.style.display === "none" ? "block" : "none";
+      });
+
+      document.addEventListener("click", () => {
+        userDropdownMenu.style.display = "none";
+      });
+    }
+
+    const btnLogout = document.getElementById("btnLogout");
+    if (btnLogout) {
+      btnLogout.addEventListener("click", () => {
+        authService.logout();
+        this.showToast("Đã đăng xuất tài khoản!", "info");
+      });
+    }
+
+    // 3. Admin Events
+    const btnOpenAdminPanel = document.getElementById("btnOpenAdminPanel");
+    if (btnOpenAdminPanel) {
+      btnOpenAdminPanel.addEventListener("click", () => this.openAdminModal());
+    }
+
+    const btnCloseAdmin = document.getElementById("btnCloseAdmin");
+    if (btnCloseAdmin) {
+      btnCloseAdmin.addEventListener("click", () => this.closeAdminModal());
+    }
+
+    const tabAdminUsers = document.getElementById("tabAdminUsers");
+    if (tabAdminUsers) {
+      tabAdminUsers.addEventListener("click", () => this.switchAdminTab("users"));
+    }
+
+    const tabAdminStories = document.getElementById("tabAdminStories");
+    if (tabAdminStories) {
+      tabAdminStories.addEventListener("click", () => {
+        const badge = document.getElementById("adminStoriesAuthorFilterBadge");
+        if (badge) badge.style.display = "none";
+        this.switchAdminTab("stories");
+        this.renderAdminStoriesList(this.adminStories);
+      });
+    }
+
+    const btnRefreshAdminUsers = document.getElementById("btnRefreshAdminUsers");
+    if (btnRefreshAdminUsers) {
+      btnRefreshAdminUsers.addEventListener("click", () => this.loadAdminData());
+    }
+
+    const btnRefreshAdminStories = document.getElementById("btnRefreshAdminStories");
+    if (btnRefreshAdminStories) {
+      btnRefreshAdminStories.addEventListener("click", () => this.loadAdminData());
+    }
+
+    const adminSearchUsers = document.getElementById("adminSearchUsers");
+    if (adminSearchUsers) {
+      adminSearchUsers.addEventListener("input", (e) => this.filterAdminUsers(e.target.value));
+    }
+
+    const adminSearchStories = document.getElementById("adminSearchStories");
+    if (adminSearchStories) {
+      adminSearchStories.addEventListener("input", (e) => this.filterAdminStories(e.target.value));
+    }
+
+    const btnClearAuthorFilter = document.getElementById("btnClearAuthorFilter");
+    if (btnClearAuthorFilter) {
+      btnClearAuthorFilter.addEventListener("click", () => {
+        const badge = document.getElementById("adminStoriesAuthorFilterBadge");
+        if (badge) badge.style.display = "none";
+        this.renderAdminStoriesList(this.adminStories);
+      });
+    }
+
+    // 4. API Settings Events
+    const btnOpenApi = document.getElementById("btnOpenApiSettings");
+    if (btnOpenApi) {
+      btnOpenApi.addEventListener("click", () => this.openApiSettingsModal());
+    }
+
+    const keyBadge = document.getElementById("apiKeyStatusBadge");
+    if (keyBadge) {
+      keyBadge.addEventListener("click", () => this.openApiSettingsModal());
+    }
+
+    const liveQuotaBadge = document.getElementById("apiQuotaLiveBadge");
+    if (liveQuotaBadge) {
+      liveQuotaBadge.addEventListener("click", () => this.openApiSettingsModal());
+    }
+
+    const btnClearApiStats = document.getElementById("btnClearApiStats");
+    if (btnClearApiStats) {
+      btnClearApiStats.addEventListener("click", () => this.clearApiUsageStats());
+    }
+
+    const btnCloseApi = document.getElementById("btnCloseApiSettings");
+    if (btnCloseApi) {
+      btnCloseApi.addEventListener("click", () => this.closeApiSettingsModal());
+    }
+
+    const btnSaveApi = document.getElementById("btnSaveApiSettings");
+    if (btnSaveApi) {
+      btnSaveApi.addEventListener("click", () => this.saveApiSettings());
+    }
+
+    const btnTestApi = document.getElementById("btnTestApiKey");
+    if (btnTestApi) {
+      btnTestApi.addEventListener("click", () => this.testApiKeyConnection());
+    }
+
+    const modelSelectEl = document.getElementById("modelSelect");
+    if (modelSelectEl) {
+      modelSelectEl.addEventListener("change", (e) => {
         this.updateQuotaDisplay(e.target.value);
       });
     }
 
-    const liveBadge = document.getElementById("apiQuotaLiveBadge");
-    if (liveBadge) liveBadge.addEventListener("click", () => this.openApiSettingsModal());
+    // 5. Story Library Events
+    const btnOpenLib = document.getElementById("btnOpenLibrary");
+    if (btnOpenLib) {
+      btnOpenLib.addEventListener("click", () => this.openStoryLibraryModal());
+    }
 
-    const btnClearStats = document.getElementById("btnClearApiStats");
-    if (btnClearStats) {
-      btnClearStats.addEventListener("click", () => {
-        if (confirm("Bạn có chắc muốn reset toàn bộ bộ đếm token và request của các Key về 0?")) {
-          storageService.resetApiStats();
-          this.updateQuotaDisplay();
-          this.showToast("Đã reset thống kê hạn mức API!", "success");
+    const btnCloseLib = document.getElementById("btnCloseStoryLibrary");
+    if (btnCloseLib) {
+      btnCloseLib.addEventListener("click", () => this.closeStoryLibraryModal());
+    }
+
+    const libSearch = document.getElementById("librarySearchInput");
+    if (libSearch) {
+      libSearch.addEventListener("input", (e) => this.filterLibraryStories(e.target.value));
+    }
+
+    const btnClearAll = document.getElementById("btnClearAllStories");
+    if (btnClearAll) {
+      btnClearAll.addEventListener("click", async () => {
+        const stories = await storageService.getAllStories();
+        if (stories.length === 0) {
+          this.showToast("Thư viện hiện đang trống!", "info");
+          return;
+        }
+        if (confirm(`CẢNH BÁO: Bạn có chắc chắn muốn XÓA TẤT CẢ ${stories.length} bộ truyện trong thư viện để giải phóng dung lượng không?`)) {
+          await storageService.clearAllStories();
+          await this.updateSavedCount();
+          this.openStoryLibraryModal();
+          this.showToast("Đã xóa toàn bộ truyện khỏi thư viện!", "success");
         }
       });
     }
 
-    const btnOpenLib = document.getElementById("btnOpenStoryLibrary");
-    const btnCloseLib = document.getElementById("btnCloseStoryLibrary");
-    if (btnOpenLib) btnOpenLib.addEventListener("click", () => this.openStoryLibraryModal());
-    if (btnCloseLib) btnCloseLib.addEventListener("click", () => this.closeStoryLibraryModal());
-
-    // Auth Modal Triggers
-    const btnCloseAuth = document.getElementById("btnCloseAuthModal");
-    const tabLogin = document.getElementById("authTabLogin");
-    const tabReg = document.getElementById("authTabRegister");
-    const btnLoginSubmit = document.getElementById("btnLoginSubmit");
-    const btnRegSubmit = document.getElementById("btnRegisterSubmit");
-
-    if (btnCloseAuth) btnCloseAuth.addEventListener("click", () => this.closeAuthModal());
-    if (tabLogin) tabLogin.addEventListener("click", () => this.switchAuthTab("login"));
-    if (tabReg) tabReg.addEventListener("click", () => this.switchAuthTab("register"));
-    if (btnLoginSubmit) btnLoginSubmit.addEventListener("click", () => this.handleLogin());
-    if (btnRegSubmit) btnRegSubmit.addEventListener("click", () => this.handleRegister());
-
-    // Profile Modal Triggers
-    const btnCloseProfile = document.getElementById("btnCloseProfileModal");
-    const btnLogout = document.getElementById("btnLogout");
-    const btnOpenAdmin = document.getElementById("btnOpenAdminPanel");
-    const btnCloseAdmin = document.getElementById("btnCloseAdminPanel");
-
-    if (btnCloseProfile) btnCloseProfile.addEventListener("click", () => this.closeUserProfileModal());
-    if (btnLogout) {
-      btnLogout.addEventListener("click", () => {
-        authService.logout();
-        this.closeUserProfileModal();
-        this.showToast("Đã đăng xuất tài khoản.", "info");
+    // 6. New Story Button
+    const btnNewStory = document.getElementById("btnNewStory");
+    if (btnNewStory) {
+      btnNewStory.addEventListener("click", () => {
+        if (confirm("Bạn có muốn bắt đầu tạo một bộ truyện mới không?")) {
+          this.novelController.currentStory = null;
+          this.novelController.selectedConcept = null;
+          const conceptsSec = document.getElementById("conceptsSection");
+          if (conceptsSec) conceptsSec.style.display = "none";
+          const premiseInput = document.getElementById("userPremiseInput");
+          if (premiseInput) premiseInput.value = "";
+          this.switchWorkspace("novel");
+          this.novelController.goToStep(1);
+        }
       });
     }
 
-    if (btnOpenAdmin) btnOpenAdmin.addEventListener("click", () => this.openAdminPanelModal());
-    if (btnCloseAdmin) btnCloseAdmin.addEventListener("click", () => this.closeAdminPanelModal());
+    // 7. Backdrop Click & Escape to close modals
+    ["authModal", "adminModal", "apiSettingsModal", "storyLibraryModal"].forEach(id => {
+      const modal = document.getElementById(id);
+      if (modal) {
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) {
+            modal.classList.remove("open");
+          }
+        });
+      }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        document.querySelectorAll(".modal-backdrop.open").forEach(m => m.classList.remove("open"));
+      }
+    });
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  window.novelStudio = new NovelStudioApp();
-});
+// Khởi tạo và gán toàn cục
+window.novelStudio = new NovelStudioApp();

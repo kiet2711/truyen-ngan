@@ -115,55 +115,11 @@ class NovelStudioApp {
       }
     }
 
-    // 2. Cập nhật Modal Cài Đặt
-    const activeBadge = document.getElementById("modalActiveModelBadge");
-    if (activeBadge) activeBadge.textContent = activeModel.modelId;
-
-    const modalRpmLabel = document.getElementById("modalRpmLabel");
-    const modalRpmBar = document.getElementById("modalRpmBar");
-    const modalTpmLabel = document.getElementById("modalTpmLabel");
-    const modalTpmBar = document.getElementById("modalTpmBar");
-    const modalRpdLabel = document.getElementById("modalRpdLabel");
-    const modalRpdBar = document.getElementById("modalRpdBar");
-    const modalPromptTokens = document.getElementById("modalPromptTokens");
-    const modalCandidatesTokens = document.getElementById("modalCandidatesTokens");
-    const modalTotalTokens = document.getElementById("modalTotalTokens");
+    // 2. Cập nhật Đồng hồ Reset ngày
     const resetTimerEl = document.getElementById("quotaResetCountdown");
-
     if (resetTimerEl && stats.resetCountdown) {
       resetTimerEl.innerHTML = `🕒 Reset ngày sau: <strong>${stats.resetCountdown.hours}h ${stats.resetCountdown.minutes}m</strong>`;
     }
-
-    if (modalRpmLabel && modalRpmBar) {
-      modalRpmLabel.textContent = `${activeModel.rpm} / ${activeModel.rpmLimit} RPM`;
-      const rpmPct = Math.min(100, Math.round((activeModel.rpm / activeModel.rpmLimit) * 100));
-      modalRpmBar.style.width = `${rpmPct}%`;
-      modalRpmBar.className = "quota-progress-bar rpm-bar";
-      if (rpmPct >= 90) modalRpmBar.classList.add("danger");
-      else if (rpmPct >= 65) modalRpmBar.classList.add("warning");
-    }
-
-    if (modalTpmLabel && modalTpmBar) {
-      modalTpmLabel.textContent = `${this.formatTokenCount(activeModel.tpm)} / ${this.formatTokenCount(activeModel.tpmLimit)} TPM`;
-      const tpmPct = Math.min(100, Math.round((activeModel.tpm / activeModel.tpmLimit) * 100));
-      modalTpmBar.style.width = `${tpmPct}%`;
-      modalTpmBar.className = "quota-progress-bar tpm-bar";
-      if (tpmPct >= 90) modalTpmBar.classList.add("danger");
-      else if (tpmPct >= 65) modalTpmBar.classList.add("warning");
-    }
-
-    if (modalRpdLabel && modalRpdBar) {
-      modalRpdLabel.textContent = `${activeModel.rpd} / ${activeModel.rpdLimit} RPD`;
-      const rpdPct = Math.min(100, Math.round((activeModel.rpd / activeModel.rpdLimit) * 100));
-      modalRpdBar.style.width = `${rpdPct}%`;
-      modalRpdBar.className = "quota-progress-bar rpd-bar";
-      if (rpdPct >= 90) modalRpdBar.classList.add("danger");
-      else if (rpdPct >= 75) modalRpdBar.classList.add("warning");
-    }
-
-    if (modalPromptTokens) modalPromptTokens.textContent = (activeModel.promptTokens || 0).toLocaleString("vi-VN");
-    if (modalCandidatesTokens) modalCandidatesTokens.textContent = (activeModel.candidatesTokens || 0).toLocaleString("vi-VN");
-    if (modalTotalTokens) modalTotalTokens.textContent = (activeModel.totalTokens || 0).toLocaleString("vi-VN");
 
     // 3. Render Bảng All Models Dashboard (Hạn mức từng model độc lập)
     const allModelsTableBody = document.getElementById("modalAllModelsTableBody");

@@ -528,85 +528,25 @@
       </div>
       <div style="display: flex; flex-direction: column; gap: 16px;">
         
-        <!-- ==================== REAL-TIME QUOTA & TOKEN TRACKER (PER-MODEL) ==================== -->
+        <!-- ==================== REAL-TIME QUOTA & TOKEN TRACKER ==================== -->
         <div class="quota-tracker-box">
           <div class="quota-tracker-header">
             <div class="quota-tracker-title">
               <span>📊</span>
-              <span>Hạn Mức Theo Model Đang Chọn:</span>
-              <span id="modalActiveModelBadge" class="badge badge-emerald" style="font-size: 11px; text-transform: none;">gemini-3.6-flash</span>
+              <span>Hạn Mức & Lượng Dùng Theo Từng Model (Google AI Studio)</span>
             </div>
-            <div class="quota-reset-timer" id="quotaResetCountdown" title="Google Cloud Quota tự động reset lúc 00:00 UTC-8 (khoảng 14h-15h VN hàng ngày)">
-              🕒 Reset ngày sau: <strong>--h --m</strong>
-            </div>
-          </div>
-
-          <!-- Active Model Progress Bars (3 Cards: RPM, TPM, RPD) -->
-          <div class="quota-progress-grid">
-            <div class="quota-card">
-              <div class="quota-card-label">
-                <span>⚡ Tốc Độ (RPM)</span>
-                <span id="modalRpmLabel">0 / 5 RPM</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div class="quota-reset-timer" id="quotaResetCountdown" title="Google Cloud Quota tự động reset lúc 00:00 UTC-8 (khoảng 14h-15h VN hàng ngày)">
+                🕒 Reset ngày sau: <strong>--h --m</strong>
               </div>
-              <div class="quota-progress-track">
-                <div class="quota-progress-bar rpm-bar" id="modalRpmBar" style="width: 0%;"></div>
-              </div>
-              <div class="quota-subtext">Lượt gọi trong 60s</div>
+              <button type="button" id="btnClearApiStats" class="btn btn-secondary btn-xs" title="Làm mới lại bộ đếm token và request">
+                🔄 Reset Thống Kê
+              </button>
             </div>
-
-            <div class="quota-card">
-              <div class="quota-card-label">
-                <span>🌊 Lưu Lượng (TPM)</span>
-                <span id="modalTpmLabel">0 / 250k TPM</span>
-              </div>
-              <div class="quota-progress-track">
-                <div class="quota-progress-bar tpm-bar" id="modalTpmBar" style="width: 0%;"></div>
-              </div>
-              <div class="quota-subtext">Tokens trong 60s</div>
-            </div>
-
-            <div class="quota-card">
-              <div class="quota-card-label">
-                <span>📅 Hạn Mức Ngày (RPD)</span>
-                <span id="modalRpdLabel">0 / 20 RPD</span>
-              </div>
-              <div class="quota-progress-track">
-                <div class="quota-progress-bar rpd-bar" id="modalRpdBar" style="width: 0%;"></div>
-              </div>
-              <div class="quota-subtext">Lượt gọi từ 00:00 UTC-8</div>
-            </div>
-          </div>
-
-          <!-- Token Stats Summary -->
-          <div class="quota-token-summary-row">
-            <div class="token-stat-pill">
-              <span class="token-icon">📥</span>
-              <span class="token-name">Prompt:</span>
-              <strong id="modalPromptTokens">0</strong>
-            </div>
-            <div class="token-stat-pill">
-              <span class="token-icon">📤</span>
-              <span class="token-name">Candidate:</span>
-              <strong id="modalCandidatesTokens">0</strong>
-            </div>
-            <div class="token-stat-pill highlight">
-              <span class="token-icon">✨</span>
-              <span class="token-name">Token Model:</span>
-              <strong id="modalTotalTokens">0</strong>
-            </div>
-            <button type="button" id="btnClearApiStats" class="btn btn-secondary btn-xs" style="margin-left: auto;" title="Làm mới lại bộ đếm token và request">
-              🔄 Reset Thống Kê
-            </button>
           </div>
 
           <!-- ALL MODELS QUOTA DASHBOARD TABLE -->
-          <div style="margin-top: 6px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">
-                🤖 Bảng hạn mức độc lập từng Model AI (Google AI Studio):
-              </span>
-              <span style="font-size: 10px; color: var(--text-dim);">Hạn mức mỗi model là độc lập</span>
-            </div>
+          <div>
             <div class="quota-keys-table-container">
               <table class="quota-keys-table">
                 <thead>

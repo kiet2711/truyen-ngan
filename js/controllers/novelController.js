@@ -254,29 +254,27 @@ export class NovelController {
       return;
     }
 
-    const protagonist = document.getElementById("protagonistInput")?.value || "Nữ chính độc lập, mạnh mẽ";
-    const antagonist = document.getElementById("antagonistInput")?.value || "Mẹ chồng / Em gái độc hại";
-    const setting = document.getElementById("settingSelect")?.value || "Hiện đại đô thị hào môn";
     const userPremise = document.getElementById("userPremiseInput")?.value || "";
-    const targetWords = parseInt(document.getElementById("targetWordsSelect")?.value, 10) || 12000;
-    const tone = document.getElementById("toneSelect")?.value || "Kịch tính, vả mặt đã tai, cuốn hút";
+    const chapterCount = parseInt(document.getElementById("chapterCountSelect")?.value, 10) || 6;
+    const wordsPerChapter = parseInt(document.getElementById("wordsPerChapterSelect")?.value, 10) || 2000;
+    const targetWords = chapterCount * wordsPerChapter;
 
     const params = {
       selectedTags: Array.from(this.selectedTags),
-      protagonist,
-      antagonist,
-      setting,
       userPremise,
-      targetWords,
-      tone
+      chapterCount,
+      wordsPerChapter,
+      targetWords
     };
 
     const btn = document.getElementById("btnGenerateConcepts");
     const container = document.getElementById("conceptsGrid");
-    const section = document.getElementById("conceptsResultSection");
+    const section = document.getElementById("conceptsSection") || document.getElementById("conceptsResultSection");
 
-    btn.disabled = true;
-    btn.innerHTML = `<span class="typing-cursor"></span> AI đang lên 3 kịch bản Zhihu...`;
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<span class="typing-cursor"></span> AI đang lên 3 kịch bản Zhihu...`;
+    }
     if (section) section.style.display = "block";
     if (container) {
       container.innerHTML = `
@@ -289,24 +287,49 @@ export class NovelController {
     }
 
     try {
-      this.generatedConcepts = await geminiService.generateStoryConcepts(params);
+      const res = await geminiService.generateStoryConcepts(params);
+      if (Array.isArray(res)) {
+        this.generatedConcepts = res;
+      } else if (res && Array.isArray(res.concepts)) {
+        this.generatedConcepts = res.concepts;
+      } else if (res && Array.isArray(res.data)) {
+        this.generatedConcepts = res.data;
+      } else if (res && typeof res === "object") {
+        const arr = Object.values(res).find(v => Array.isArray(v));
+        this.generatedConcepts = arr || [res];
+      } else {
+        this.generatedConcepts = [];
+      }
+
+      if (this.generatedConcepts.length === 0) {
+        throw new Error("AI không trả về danh sách kịch bản hợp lệ. Vui lòng thử lại!");
+      }
+
+      this.selectedConcept = this.generatedConcepts[0] || null;
       this.renderConceptCards(params);
+      if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
       this.app.showToast("Đã tạo thành công 3 bản phác thảo cốt truyện!", "success");
     } catch (error) {
+      console.error("Lỗi tạo concepts:", error);
       this.app.showToast(`Lỗi: ${error.message}`, "error");
       if (container) {
         container.innerHTML = `
           <div style="grid-column: 1/-1; padding: 24px; background: rgba(239, 68, 68, 0.1); border: 1px solid var(--accent-rose); border-radius: 8px; color: var(--accent-rose);">
             <strong>✕ Không thể tạo cốt truyện:</strong> ${error.message}
             <div style="margin-top: 12px;">
-              <button class="btn btn-secondary btn-sm" onclick="window.novelStudio.openApiSettingsModal()">Kiểm tra API Key</button>
+              <button class="btn btn-secondary btn-sm" id="btnRetryConceptsModal">Kiểm tra API Key</button>
             </div>
           </div>
         `;
+        document.getElementById("btnRetryConceptsModal")?.addEventListener("click", () => {
+          this.app.openApiSettingsModal();
+        });
       }
     } finally {
-      btn.disabled = false;
-      btn.innerHTML = `<span>✨</span> Lên 3 Bản Phác Thảo Cốt Truyện`;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `⚡ AI Tạo 3 Bản Đề Xuất Cốt Truyện (Bối Cảnh & Motif)`;
+      }
     }
   }
 
@@ -315,50 +338,113 @@ export class NovelController {
     if (!container) return;
     container.innerHTML = "";
 
+    if (!Array.isArray(this.generatedConcepts) || this.generatedConcepts.length === 0) {
+      container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 20px;">Không có bản phác thảo nào được tạo. Vui lòng thử lại.</div>`;
+      return;
+    }
+
     this.generatedConcepts.forEach((concept, index) => {
+      const isSelected = this.selectedConcept?.id === (concept.id || index + 1) || (index === 0 && !this.selectedConcept);
+      if (isSelected && !this.selectedConcept) {
+        this.selectedConcept = concept;
+      }
+
       const card = document.createElement("div");
-      card.className = `concept-card ${this.selectedConcept?.id === concept.id ? 'selected' : ''}`;
-      card.id = `conceptCard_${concept.id}`;
+      card.className = `concept-card ${isSelected ? 'selected' : ''}`;
+      card.id = `conceptCard_${concept.id || index + 1}`;
+
+      const title = concept.title || `Bản Đề Xuất #${index + 1}`;
+      const hook = concept.hook || "";
+      const setting = concept.settingAndCharacters || concept.setting || "";
+      const motif = concept.motifAndConflict || concept.conflict || "";
+      const summary = concept.plotSummary || concept.premise || "";
+      const twist = concept.climaxTwist || concept.twist || "";
 
       card.innerHTML = `
-        <div class="concept-badge">Kịch Bản #${index + 1} • ${concept.tone || 'Zhihu High Drama'}</div>
-        <div class="concept-title">${concept.title}</div>
-        <div class="concept-premise">${concept.premise}</div>
-        <div class="concept-hook">
-          <div class="concept-hook-label">⚡ Móc Câu Mở Đầu (Hook 30s):</div>
-          "${concept.hook}"
-        </div>
-        <div class="concept-twist">
-          <div class="concept-twist-label">🎭 Cú Twist Bất Ngờ (Zhihu Twist):</div>
-          ${concept.twist}
-        </div>
-        <button class="btn ${this.selectedConcept?.id === concept.id ? 'btn-success' : 'btn-primary'} btn-select-concept" style="width: 100%; margin-top: 16px;">
-          ${this.selectedConcept?.id === concept.id ? '✓ Đã Chọn Kịch Bản Này' : '👉 Chọn Kịch Bản & Sang Bước 2'}
+        <div class="concept-number-badge">Kịch Bản #${index + 1}</div>
+        <div class="concept-title">${title}</div>
+        ${hook ? `<div class="concept-hook">"${hook}"</div>` : ""}
+        ${setting ? `<div class="concept-detail-item"><strong>🏞️ Bối cảnh & Nhân vật:</strong> ${setting}</div>` : ""}
+        ${motif ? `<div class="concept-detail-item"><strong>⚔️ Motif xung đột:</strong> ${motif}</div>` : ""}
+        ${summary ? `<div class="concept-detail-item"><strong>📖 Tóm tắt diễn biến:</strong> ${summary}</div>` : ""}
+        ${twist ? `<div class="concept-detail-item" style="color: #f472b6;"><strong>🎭 Cú twist vả mặt:</strong> ${twist}</div>` : ""}
+        <button class="btn ${isSelected ? 'btn-success' : 'btn-secondary'} btn-select-concept" style="width: 100%; margin-top: 12px;">
+          ${isSelected ? '✓ Đang Chọn Bản Này' : '👉 Chọn Bản Này'}
         </button>
       `;
 
-      card.querySelector(".btn-select-concept").addEventListener("click", () => {
+      card.addEventListener("click", () => {
+        this.selectConcept(concept, params);
+      });
+
+      card.querySelector(".btn-select-concept")?.addEventListener("click", (e) => {
+        e.stopPropagation();
         this.selectConcept(concept, params);
       });
 
       container.appendChild(card);
     });
+
+    // Bind Confirm button & Reroll button
+    const btnConfirm = document.getElementById("btnConfirmConceptAndGoToOutline");
+    if (btnConfirm) {
+      btnConfirm.onclick = () => {
+        if (!this.selectedConcept && this.generatedConcepts.length > 0) {
+          this.selectedConcept = this.generatedConcepts[0];
+        }
+        if (this.selectedConcept) {
+          this.goToOutlineStep(params);
+        } else {
+          this.app.showToast("Vui lòng chọn 1 bản kịch bản đề xuất!", "warning");
+        }
+      };
+    }
+
+    const btnReroll = document.getElementById("btnRerollConcepts");
+    if (btnReroll) {
+      btnReroll.onclick = () => {
+        this.generateStoryConcepts();
+      };
+    }
   }
 
   selectConcept(concept, params) {
     this.selectedConcept = concept;
-    document.querySelectorAll(".concept-card").forEach(c => c.classList.remove("selected"));
-    const selectedCard = document.getElementById(`conceptCard_${concept.id}`);
-    if (selectedCard) selectedCard.classList.add("selected");
+    document.querySelectorAll(".concepts-grid .concept-card").forEach(c => {
+      c.classList.remove("selected");
+      const btn = c.querySelector(".btn-select-concept");
+      if (btn) {
+        btn.className = "btn btn-secondary btn-select-concept";
+        btn.textContent = "👉 Chọn Bản Này";
+      }
+    });
 
-    const chapterCount = Math.max(8, Math.min(18, Math.round((params.targetWords || 12000) / 1200)));
+    const cardId = `conceptCard_${concept.id || 1}`;
+    const selectedCard = document.getElementById(cardId) || document.querySelector(`.concept-card:nth-child(${concept.id || 1})`);
+    if (selectedCard) {
+      selectedCard.classList.add("selected");
+      const btn = selectedCard.querySelector(".btn-select-concept");
+      if (btn) {
+        btn.className = "btn btn-success btn-select-concept";
+        btn.textContent = "✓ Đang Chọn Bản Này";
+      }
+    }
+  }
+
+  goToOutlineStep(params) {
+    if (!this.selectedConcept) return;
+    const concept = this.selectedConcept;
+    const chapterCount = params?.chapterCount || parseInt(document.getElementById("chapterCountSelect")?.value, 10) || 6;
+    const wordsPerChapter = params?.wordsPerChapter || parseInt(document.getElementById("wordsPerChapterSelect")?.value, 10) || 2000;
+    const targetWords = chapterCount * wordsPerChapter;
 
     this.currentStory = {
       id: `story_${Date.now()}`,
       title: concept.title,
       concept: concept,
-      params: { ...params, chapterCount },
+      params: { ...(params || {}), chapterCount, wordsPerChapter, targetWords },
       outline: null,
+      characterBible: [],
       chapters: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -368,6 +454,9 @@ export class NovelController {
     this.setupStep2View();
     this.goToStep(2);
     this.app.showToast(`Đã chọn: "${concept.title}"`, "success");
+
+    // Auto-generate outline
+    this.generateDetailedOutline();
   }
 
   // ==================== STEP 2: DETAILED OUTLINE ====================
@@ -376,32 +465,56 @@ export class NovelController {
     if (!this.currentStory) return;
     const story = this.currentStory;
 
-    const banner = document.getElementById("step2ConceptBanner");
-    if (banner) {
-      banner.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
-          <div>
-            <div style="font-size: 18px; font-weight: 800; color: #fff;">${story.title}</div>
-            <div style="font-size: 13px; color: var(--text-dim); margin-top: 4px;">${story.concept.premise}</div>
-            <div style="display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;">
-              ${(story.params.selectedTags || []).map(t => `<span class="badge badge-purple">${t}</span>`).join("")}
-              <span class="badge badge-emerald">Dự kiến: ${story.params.chapterCount} chương (~${(story.params.targetWords || 12000).toLocaleString()} từ)</span>
-            </div>
-          </div>
-          <button class="btn btn-secondary btn-sm" id="btnEditStep1Params" style="flex-shrink: 0;">
-            ✏️ Đổi Ý Tưởng
-          </button>
-        </div>
-      `;
+    const titleInput = document.getElementById("storyTitleInput");
+    const loglineInput = document.getElementById("storyLoglineInput");
+    const settingInput = document.getElementById("storySettingDescInput");
+    const totalBadge = document.getElementById("totalChapterBadge");
 
-      document.getElementById("btnEditStep1Params")?.addEventListener("click", () => {
-        this.goToStep(1);
-      });
+    if (titleInput) titleInput.value = story.title || "";
+    if (loglineInput) loglineInput.value = story.logline || story.concept?.hook || story.concept?.premise || "";
+    if (settingInput) settingInput.value = story.settingDescription || story.concept?.settingAndCharacters || story.concept?.setting || "";
+    if (totalBadge) totalBadge.textContent = `${story.params?.chapterCount || 6} Chương`;
+
+    // Listeners for inputs
+    if (titleInput) {
+      titleInput.oninput = (e) => {
+        if (this.currentStory) this.currentStory.title = e.target.value;
+      };
+    }
+    if (loglineInput) {
+      loglineInput.oninput = (e) => {
+        if (this.currentStory) this.currentStory.logline = e.target.value;
+      };
+    }
+    if (settingInput) {
+      settingInput.oninput = (e) => {
+        if (this.currentStory) this.currentStory.settingDescription = e.target.value;
+      };
     }
 
-    const outlineCountInput = document.getElementById("outlineChapterCount");
-    if (outlineCountInput) {
-      outlineCountInput.value = story.params.chapterCount || 10;
+    const btnBack = document.getElementById("btnBackToStep1");
+    if (btnBack) {
+      btnBack.onclick = () => this.goToStep(1);
+    }
+
+    const btnRegen = document.getElementById("btnRegenerateOutline");
+    if (btnRegen) {
+      btnRegen.onclick = () => this.generateDetailedOutline();
+    }
+
+    const btnAddChar = document.getElementById("btnAddCharacter");
+    if (btnAddChar) {
+      btnAddChar.onclick = () => this.addCharacterToBible();
+    }
+
+    const btnStart = document.getElementById("btnStartWriting");
+    if (btnStart) {
+      btnStart.onclick = () => {
+        this.syncOutlineInputs();
+        this.setupStep3View();
+        this.goToStep(3);
+        this.startWritingStory();
+      };
     }
 
     if (story.outline) {
@@ -412,28 +525,37 @@ export class NovelController {
   async generateDetailedOutline() {
     if (!this.currentStory) return;
 
-    const btn = document.getElementById("btnGenerateOutline");
-    const container = document.getElementById("outlineEditorContainer");
-    const chapterCount = parseInt(document.getElementById("outlineChapterCount")?.value, 10) || 10;
+    const btnRegen = document.getElementById("btnRegenerateOutline");
+    const bibleContainer = document.getElementById("storyBibleContainer");
+    const outlineContainer = document.getElementById("chapterOutlineList");
 
-    this.currentStory.params.chapterCount = chapterCount;
+    if (btnRegen) {
+      btnRegen.disabled = true;
+      btnRegen.innerHTML = `<span class="typing-cursor"></span> Đang lập dàn ý...`;
+    }
 
-    btn.disabled = true;
-    btn.innerHTML = `<span class="typing-cursor"></span> AI đang phân tích & lập dàn ý ${chapterCount} chương...`;
-    container.innerHTML = `
-      <div style="text-align: center; padding: 48px; color: var(--accent-pink);">
-        <div style="font-size: 32px; margin-bottom: 12px; animation: bounce 1.5s infinite;">📋</div>
-        <div style="font-weight: 700; font-size: 16px;">Đang phân bổ nhịp điệu Zhihu: Mở đầu Hook ➡️ Tích tụ Uất ức ➡️ Đỉnh điểm Bùng nổ ➡️ Vả mặt Trả thù...</div>
-        <div style="font-size: 12px; color: var(--text-dim); margin-top: 6px;">Chia nhỏ thành ${chapterCount} chương với cliffhanger và conflict rõ ràng</div>
-      </div>
-    `;
+    if (bibleContainer) {
+      bibleContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--accent-pink); padding: 20px;"><div style="font-size: 24px; animation: spin 2s linear infinite;">🪄</div>Đang tạo bảng nhân vật chuẩn Hán Việt...</div>`;
+    }
+    if (outlineContainer) {
+      outlineContainer.innerHTML = `<div style="text-align: center; color: var(--accent-pink); padding: 30px;"><div style="font-size: 24px; animation: spin 2s linear infinite;">🪄</div>Đang thiết lập dàn ý chi tiết từng chương chuẩn phim ngắn...</div>`;
+    }
 
     try {
       const outline = await geminiService.generateDetailedOutline(this.currentStory.concept, this.currentStory.params);
       this.currentStory.outline = outline;
-      this.currentStory.chapters = outline.chapters.map(ch => ({
-        chapterNumber: ch.chapterNumber,
-        title: ch.title,
+      this.currentStory.title = outline.title || this.currentStory.title;
+      this.currentStory.logline = outline.logline || this.currentStory.concept?.hook || "";
+      this.currentStory.settingDescription = outline.settingDescription || this.currentStory.concept?.settingAndCharacters || "";
+      this.currentStory.characterBible = outline.characterBible || outline.characters || [];
+
+      const chaptersData = outline.chapters || [];
+      this.currentStory.chapters = chaptersData.map((ch, idx) => ({
+        chapterNumber: ch.index || ch.chapterNumber || idx + 1,
+        title: ch.title || `Chương ${idx + 1}`,
+        summary: ch.summary || "",
+        dramaticGoal: ch.dramaticGoal || ch.conflict || "",
+        appearingCharacters: ch.appearingCharacters || [],
         outlineInfo: ch,
         content: "",
         wordCount: 0,
@@ -442,274 +564,236 @@ export class NovelController {
 
       await this.app.saveCurrentStory();
       this.renderOutlineView();
-      this.app.showToast("Đã hoàn thành Checkpoint 1: Dàn ý chi tiết!", "success");
+      this.app.showToast("Đã hoàn thành Checkpoint 1: Dàn ý chi tiết & Bảng nhân vật!", "success");
     } catch (error) {
+      console.error("Lỗi tạo dàn ý:", error);
       this.app.showToast(`Lỗi tạo dàn ý: ${error.message}`, "error");
-      container.innerHTML = `
-        <div style="padding: 20px; background: rgba(239, 68, 68, 0.1); border: 1px solid var(--accent-rose); border-radius: 8px; color: var(--accent-rose);">
-          ✕ Không thể lập dàn ý: ${error.message}
-        </div>
-      `;
+      if (outlineContainer) {
+        outlineContainer.innerHTML = `
+          <div style="padding: 16px; background: rgba(239, 68, 68, 0.1); border: 1px solid var(--accent-rose); border-radius: 8px; color: var(--accent-rose);">
+            ✕ Không thể lập dàn ý: ${error.message}
+          </div>
+        `;
+      }
     } finally {
-      btn.disabled = false;
-      btn.innerHTML = `<span>🪄</span> Tự Động Lập Dàn Ý Chi Tiết`;
+      if (btnRegen) {
+        btnRegen.disabled = false;
+        btnRegen.innerHTML = `🔄 Đổi Dàn Ý Khác`;
+      }
     }
   }
 
   renderOutlineView() {
-    const container = document.getElementById("outlineEditorContainer");
-    if (!container || !this.currentStory?.outline) return;
+    if (!this.currentStory) return;
+    const story = this.currentStory;
 
-    const outline = this.currentStory.outline;
+    const titleInput = document.getElementById("storyTitleInput");
+    const loglineInput = document.getElementById("storyLoglineInput");
+    const settingInput = document.getElementById("storySettingDescInput");
+    const totalBadge = document.getElementById("totalChapterBadge");
 
-    container.innerHTML = `
-      <!-- Characters Overview -->
-      <div class="studio-card" style="margin-bottom: 20px;">
-        <div class="card-title" style="margin-bottom: 12px;">👥 Tuyến Nhân Vật Chính & Động Cơ:</div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
-          ${(outline.characters || []).map(char => `
-            <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 12px;">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <strong style="color: var(--accent-pink); font-size: 14px;">${char.name}</strong>
-                <span class="badge badge-purple" style="font-size: 10px;">${char.role}</span>
-              </div>
-              <div style="font-size: 12px; color: var(--text-main); margin-top: 4px;"><strong>Tính cách:</strong> ${char.personality}</div>
-              <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;"><strong>Mục tiêu:</strong> ${char.motivation}</div>
-            </div>
-          `).join("")}
+    if (titleInput && story.title) titleInput.value = story.title;
+    if (loglineInput && story.logline) loglineInput.value = story.logline;
+    if (settingInput && story.settingDescription) settingInput.value = story.settingDescription;
+    if (totalBadge) totalBadge.textContent = `${story.chapters?.length || 6} Chương`;
+
+    this.renderStoryBible();
+    this.renderChapterOutlineList();
+  }
+
+  renderStoryBible() {
+    const container = document.getElementById("storyBibleContainer");
+    if (!container || !this.currentStory) return;
+    container.innerHTML = "";
+
+    const characters = this.currentStory.characterBible || [];
+    characters.forEach((char, idx) => {
+      const card = document.createElement("div");
+      card.className = "character-card";
+      card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <input type="text" class="character-name-input" value="${char.name || ''}" placeholder="Tên nhân vật Hán Việt...">
+          <button class="btn btn-danger btn-xs btn-delete-char" data-idx="${idx}" title="Xóa nhân vật">&times;</button>
         </div>
-      </div>
-
-      <!-- Arc Progression -->
-      <div class="studio-card" style="margin-bottom: 20px;">
-        <div class="card-title" style="margin-bottom: 8px;">📈 Cấu Trúc Cốt Truyện 3 Hồi (Zhihu Arc):</div>
-        <div style="font-size: 13px; color: var(--text-main); line-height: 1.6; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px;">
-          ${outline.arcSummary || 'Theo chuẩn cấu trúc Zhihu: Kích thích tò mò ban đầu, đẩy mâu thuẫn lên đỉnh điểm, lật ngược thế cờ và kết thúc thỏa mãn.'}
+        <div style="margin-bottom: 6px;">
+          <input type="text" class="param-input char-role-input" value="${char.role || ''}" placeholder="Vai trò / Thân phận..." style="font-size: 12px; padding: 4px 8px;">
         </div>
-      </div>
-
-      <!-- Chapter Outline Cards -->
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <div style="font-size: 16px; font-weight: 700; color: #fff;">
-          📚 Danh Sách ${outline.chapters.length} Chương Chi Tiết:
+        <div>
+          <textarea class="param-textarea char-personality-input" rows="2" placeholder="Tính cách, động cơ, đặc điểm..." style="font-size: 12px; padding: 4px 8px;">${char.personality || char.traits || ''}</textarea>
         </div>
-        <button class="btn btn-secondary btn-sm" id="btnAddChapterToOutline">
-          ➕ Thêm Chương
-        </button>
-      </div>
+      `;
 
-      <div id="outlineChaptersList">
-        ${outline.chapters.map((ch, idx) => `
-          <div class="chapter-outline-item" data-chapter-index="${idx}">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <span class="badge badge-purple" style="font-size: 12px; padding: 4px 8px;">Chương ${ch.chapterNumber}</span>
-                <input type="text" class="param-input ch-title-input" value="${ch.title}" style="font-weight: 700; font-size: 14px; width: 320px;" placeholder="Tên chương...">
-              </div>
-              <button class="btn btn-danger btn-xs btn-delete-chapter" data-idx="${idx}" title="Xóa chương này">&times; Xóa</button>
-            </div>
-            
-            <div style="margin-top: 10px;">
-              <label style="font-size: 11px; color: var(--text-dim); display: block; margin-bottom: 4px;">Nội dung chính & diễn biến:</label>
-              <textarea class="param-textarea ch-summary-input" rows="2" style="font-size: 12px;">${ch.summary || ''}</textarea>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px;">
-              <div>
-                <label style="font-size: 11px; color: var(--accent-rose); display: block; margin-bottom: 2px;">⚡ Xung đột / Uất ức (Conflict):</label>
-                <input type="text" class="param-input ch-conflict-input" value="${ch.conflict || ''}" style="font-size: 12px;">
-              </div>
-              <div>
-                <label style="font-size: 11px; color: var(--accent-pink); display: block; margin-bottom: 2px;">🪝 Móc câu kết chương (Cliffhanger):</label>
-                <input type="text" class="param-input ch-cliff-input" value="${ch.cliffhanger || ''}" style="font-size: 12px;">
-              </div>
-            </div>
-          </div>
-        `).join("")}
-      </div>
-
-      <!-- Action Bar -->
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08);">
-        <button class="btn btn-secondary btn-lg" id="btnBackToStep1">
-          ← Quay Lại Bước 1
-        </button>
-        <button class="btn btn-primary btn-lg btn-glow" id="btnProceedToStep3">
-          🚀 Duyệt Dàn Ý & Bắt Đầu Viết Truyện (Bước 3) →
-        </button>
-      </div>
-    `;
-
-    // Bind Edit Events
-    container.querySelectorAll(".btn-delete-chapter").forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        const idx = parseInt(e.target.getAttribute("data-idx"), 10);
-        this.deleteChapterFromOutline(idx);
+      card.querySelector(".btn-delete-char")?.addEventListener("click", () => {
+        this.currentStory.characterBible.splice(idx, 1);
+        this.renderStoryBible();
       });
-    });
 
-    document.getElementById("btnAddChapterToOutline")?.addEventListener("click", () => {
-      this.addChapterToOutline();
-    });
+      card.querySelector(".character-name-input")?.addEventListener("input", (e) => {
+        char.name = e.target.value;
+      });
+      card.querySelector(".char-role-input")?.addEventListener("input", (e) => {
+        char.role = e.target.value;
+      });
+      card.querySelector(".char-personality-input")?.addEventListener("input", (e) => {
+        char.personality = e.target.value;
+      });
 
-    document.getElementById("btnBackToStep1")?.addEventListener("click", () => {
-      this.goToStep(1);
+      container.appendChild(card);
     });
+  }
 
-    document.getElementById("btnProceedToStep3")?.addEventListener("click", () => {
-      this.syncOutlineInputs();
-      this.setupStep3View();
-      this.goToStep(3);
+  addCharacterToBible() {
+    if (!this.currentStory) return;
+    if (!this.currentStory.characterBible) this.currentStory.characterBible = [];
+    this.currentStory.characterBible.push({
+      name: "Nhân Vật Mới",
+      role: "Thân phận công khai & bí mật",
+      personality: "Tính cách sắc bén, thông minh"
+    });
+    this.renderStoryBible();
+  }
+
+  renderChapterOutlineList() {
+    const container = document.getElementById("chapterOutlineList");
+    if (!container || !this.currentStory) return;
+    container.innerHTML = "";
+
+    const chapters = this.currentStory.chapters || [];
+    chapters.forEach((ch, idx) => {
+      const card = document.createElement("div");
+      card.className = "chapter-item-card";
+      card.innerHTML = `
+        <div class="chapter-item-header">
+          <span class="chapter-number-tag">Chương ${ch.chapterNumber}</span>
+          <input type="text" class="param-input chapter-title-input" value="${ch.title || ''}" placeholder="Tên chương...">
+          <button class="btn btn-danger btn-xs btn-delete-chapter" data-idx="${idx}" title="Xóa chương này">&times; Xóa</button>
+        </div>
+        <div style="margin-top: 8px;">
+          <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 2px;">Diễn biến chính:</label>
+          <textarea class="param-textarea chapter-summary-input" rows="2" placeholder="Tóm tắt nội dung chương...">${ch.summary || ch.outlineInfo?.summary || ''}</textarea>
+        </div>
+        <div style="margin-top: 6px;">
+          <label style="font-size: 11px; color: var(--accent-pink); display: block; margin-bottom: 2px;">⚡ Điểm nút vả mặt / Móc câu kết chương:</label>
+          <input type="text" class="param-input chapter-goal-input" value="${ch.dramaticGoal || ch.outlineInfo?.dramaticGoal || ch.conflict || ''}" placeholder="Màn vả mặt hoặc cú twist cuối chương...">
+        </div>
+      `;
+
+      card.querySelector(".btn-delete-chapter")?.addEventListener("click", () => {
+        if (this.currentStory.chapters.length <= 3) {
+          this.app.showToast("Cần tối thiểu 3 chương!", "warning");
+          return;
+        }
+        this.currentStory.chapters.splice(idx, 1);
+        this.currentStory.chapters.forEach((c, i) => { c.chapterNumber = i + 1; });
+        this.renderChapterOutlineList();
+      });
+
+      card.querySelector(".chapter-title-input")?.addEventListener("input", (e) => {
+        ch.title = e.target.value;
+      });
+      card.querySelector(".chapter-summary-input")?.addEventListener("input", (e) => {
+        ch.summary = e.target.value;
+      });
+      card.querySelector(".chapter-goal-input")?.addEventListener("input", (e) => {
+        ch.dramaticGoal = e.target.value;
+      });
+
+      container.appendChild(card);
     });
   }
 
   syncOutlineInputs() {
-    if (!this.currentStory?.outline) return;
+    if (!this.currentStory) return;
+    const titleInput = document.getElementById("storyTitleInput");
+    const loglineInput = document.getElementById("storyLoglineInput");
+    const settingInput = document.getElementById("storySettingDescInput");
 
-    const items = document.querySelectorAll(".chapter-outline-item");
-    items.forEach((item, idx) => {
-      const ch = this.currentStory.outline.chapters[idx];
-      if (ch) {
-        ch.title = item.querySelector(".ch-title-input")?.value || ch.title;
-        ch.summary = item.querySelector(".ch-summary-input")?.value || ch.summary;
-        ch.conflict = item.querySelector(".ch-conflict-input")?.value || ch.conflict;
-        ch.cliffhanger = item.querySelector(".ch-cliff-input")?.value || ch.cliffhanger;
-      }
-    });
-
-    this.currentStory.chapters = this.currentStory.outline.chapters.map((ch, idx) => {
-      const existing = this.currentStory.chapters[idx] || {};
-      return {
-        ...existing,
-        chapterNumber: ch.chapterNumber,
-        title: ch.title,
-        outlineInfo: ch
-      };
-    });
+    if (titleInput && titleInput.value.trim()) this.currentStory.title = titleInput.value.trim();
+    if (loglineInput && loglineInput.value.trim()) this.currentStory.logline = loglineInput.value.trim();
+    if (settingInput && settingInput.value.trim()) this.currentStory.settingDescription = settingInput.value.trim();
 
     this.app.saveCurrentStory();
   }
 
-  deleteChapterFromOutline(idx) {
-    if (this.currentStory.outline.chapters.length <= 3) {
-      this.app.showToast("Truyện cần tối thiểu 3 chương!", "warning");
-      return;
-    }
-    this.syncOutlineInputs();
-    this.currentStory.outline.chapters.splice(idx, 1);
-    // Re-index
-    this.currentStory.outline.chapters.forEach((ch, i) => {
-      ch.chapterNumber = i + 1;
-    });
-    this.renderOutlineView();
-  }
-
-  addChapterToOutline() {
-    this.syncOutlineInputs();
-    const nextNum = this.currentStory.outline.chapters.length + 1;
-    this.currentStory.outline.chapters.push({
-      chapterNumber: nextNum,
-      title: `Chương ${nextNum}: Cao Trào Tiếp Theo`,
-      summary: "Nhân vật chính tiếp tục triển khai kế hoạch...",
-      conflict: "Mâu thuẫn mới nảy sinh",
-      cliffhanger: "Tình huống bất ngờ hé lộ"
-    });
-    this.renderOutlineView();
-  }
-
-  // ==================== STEP 3: BATCH CHAPTER GENERATION ====================
+  // ==================== STEP 3: LIVE WRITING MONITOR ====================
 
   setupStep3View() {
     if (!this.currentStory) return;
-    const story = this.currentStory;
+    this.renderStep3Monitors();
 
-    const banner = document.getElementById("step3StoryBanner");
-    if (banner) {
-      banner.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <div style="font-size: 18px; font-weight: 800; color: #fff;">${story.title}</div>
-            <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
-              ${story.chapters.length} chương • Dàn ý đã sẵn sàng
-            </div>
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-secondary btn-sm" id="btnBackToStep2">
-              ✏️ Sửa Dàn Ý
-            </button>
-          </div>
-        </div>
-      `;
-
-      document.getElementById("btnBackToStep2")?.addEventListener("click", () => {
-        this.goToStep(2);
-      });
+    const btnPause = document.getElementById("btnPauseResumeWriting") || document.getElementById("btnPauseWriting");
+    if (btnPause) {
+      btnPause.onclick = () => this.pauseWriting();
     }
 
-    this.renderChapterGenerationList();
+    const btnGoToStep4 = document.getElementById("btnGoToStep4");
+    if (btnGoToStep4) {
+      btnGoToStep4.onclick = () => {
+        this.setupStep4View();
+        this.goToStep(4);
+      };
+    }
   }
 
-  renderChapterGenerationList() {
-    const container = document.getElementById("chapterGenerationList");
+  renderStep3Monitors() {
+    const container = document.getElementById("chaptersMonitorList") || document.getElementById("chapterGenerationList");
     if (!container || !this.currentStory) return;
+    container.innerHTML = "";
 
-    container.innerHTML = this.currentStory.chapters.map((ch, idx) => {
+    const chapters = this.currentStory.chapters || [];
+    chapters.forEach((ch, idx) => {
       const isCompleted = ch.status === "completed";
       const isGenerating = ch.status === "generating";
       const isError = ch.status === "error";
 
       let statusBadge = `<span class="badge" style="background: rgba(255,255,255,0.05); color: var(--text-dim);">Chờ viết</span>`;
       if (isGenerating) {
-        statusBadge = `<span class="badge badge-pink"><span class="typing-cursor"></span> Đang viết...</span>`;
+        statusBadge = `<span class="badge badge-purple"><span class="typing-cursor"></span> Đang viết...</span>`;
       } else if (isCompleted) {
-        statusBadge = `<span class="badge badge-emerald">✓ Xong (${ch.wordCount.toLocaleString()} từ)</span>`;
+        statusBadge = `<span class="badge badge-emerald">✓ Xong (${(ch.wordCount || 0).toLocaleString()} từ)</span>`;
       } else if (isError) {
         statusBadge = `<span class="badge badge-rose">✕ Lỗi</span>`;
       }
 
-      return `
-        <div class="studio-card chapter-gen-item ${isGenerating ? 'generating' : ''}" id="chapterGenItem_${ch.chapterNumber}" style="margin-bottom: 12px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" class="chapter-gen-header" data-idx="${idx}">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <span style="font-weight: 800; color: var(--accent-pink); font-size: 14px;">#${ch.chapterNumber}</span>
-              <strong style="color: #fff; font-size: 14px;">${ch.title}</strong>
-            </div>
-            <div style="display: flex; align-items: center; gap: 10px;">
-              ${statusBadge}
-              ${isCompleted ? `<button class="btn btn-secondary btn-xs btn-regen-ch" data-idx="${idx}">🔄 Viết lại</button>` : ''}
-              <span class="toggle-icon">▼</span>
-            </div>
-          </div>
-
-          <div class="chapter-gen-body" id="chapterGenBody_${ch.chapterNumber}" style="display: ${isCompleted || isGenerating ? 'block' : 'none'}; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06);">
-            <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 8px;">
-              <strong>Dàn ý:</strong> ${ch.outlineInfo?.summary || ''}
-            </div>
-            <div class="chapter-live-content" id="chapterLiveContent_${ch.chapterNumber}" style="font-size: 13px; line-height: 1.7; color: var(--text-main); max-height: 250px; overflow-y: auto; white-space: pre-wrap; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px;">${ch.content || '<em style="color: var(--text-dim);">Chưa có nội dung. Bấm "Bắt Đầu Viết" để sinh chương.</em>'}</div>
-          </div>
+      const row = document.createElement("div");
+      row.className = `chapter-monitor-row ${isGenerating ? 'active' : ''} ${isCompleted ? 'completed' : ''}`;
+      row.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-weight: 800; color: var(--accent-pink); font-size: 14px;">#${ch.chapterNumber}</span>
+          <strong style="color: #fff; font-size: 14px;">${ch.title}</strong>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          ${statusBadge}
+          ${isCompleted ? `<button class="btn btn-secondary btn-xs btn-regen-ch" data-idx="${idx}">🔄 Viết lại</button>` : ''}
         </div>
       `;
-    }).join("");
 
-    // Toggle expand
-    container.querySelectorAll(".chapter-gen-header").forEach(header => {
-      header.addEventListener("click", (e) => {
-        if (e.target.classList.contains("btn-regen-ch")) return;
-        const idx = header.getAttribute("data-idx");
-        const body = document.getElementById(`chapterGenBody_${parseInt(idx) + 1}`);
-        if (body) {
-          body.style.display = body.style.display === "none" ? "block" : "none";
-        }
-      });
-    });
-
-    // Regen chapter
-    container.querySelectorAll(".btn-regen-ch").forEach(btn => {
-      btn.addEventListener("click", async (e) => {
+      row.querySelector(".btn-regen-ch")?.addEventListener("click", (e) => {
         e.stopPropagation();
-        const idx = parseInt(btn.getAttribute("data-idx"), 10);
-        await this.regenerateSingleChapter(idx);
+        this.regenerateSingleChapter(idx);
       });
+
+      container.appendChild(row);
     });
+
+    // Update stats
+    const totalWords = chapters.reduce((sum, c) => sum + (c.wordCount || 0), 0);
+    const completedCount = chapters.filter(c => c.status === "completed").length;
+    const percent = chapters.length > 0 ? Math.round((completedCount / chapters.length) * 100) : 0;
+
+    const totalWordsEl = document.getElementById("totalWordsStat");
+    const completedEl = document.getElementById("completedChaptersStat");
+    const percentEl = document.getElementById("progressPercentStat");
+    const statusEl = document.getElementById("writingStatusStat");
+    const btnGoToStep4 = document.getElementById("btnGoToStep4");
+
+    if (totalWordsEl) totalWordsEl.textContent = totalWords.toLocaleString();
+    if (completedEl) completedEl.textContent = `${completedCount} / ${chapters.length}`;
+    if (percentEl) percentEl.textContent = `${percent}%`;
+    if (statusEl) statusEl.textContent = this.isWriting ? "AI đang viết..." : (completedCount === chapters.length && chapters.length > 0 ? "Hoàn tất" : "Sẵn sàng");
+    if (btnGoToStep4) {
+      btnGoToStep4.style.display = completedCount === chapters.length && chapters.length > 0 ? "inline-flex" : "none";
+    }
   }
 
   async startWritingStory() {
@@ -718,21 +802,23 @@ export class NovelController {
     this.isWriting = true;
     this.isPaused = false;
 
-    const btnStart = document.getElementById("btnStartWriting");
-    const btnPause = document.getElementById("btnPauseWriting");
-    const btnStop = document.getElementById("btnStopWriting");
-    const progressContainer = document.getElementById("writingProgressContainer");
+    this.goToStep(3);
+    this.setupStep3View();
 
-    if (btnStart) btnStart.style.display = "none";
-    if (btnPause) btnPause.style.display = "inline-flex";
-    if (btnStop) btnStop.style.display = "inline-flex";
-    if (progressContainer) progressContainer.style.display = "block";
+    const btnPause = document.getElementById("btnPauseResumeWriting") || document.getElementById("btnPauseWriting");
+    if (btnPause) {
+      btnPause.textContent = "⏸️ Tạm Dừng";
+    }
+
+    const throttleIndicator = document.getElementById("throttleIndicator");
+    const throttleCountdown = document.getElementById("throttleCountdown");
+    const activeChapterTitle = document.getElementById("activeChapterTitle");
+    const liveChapterWordCount = document.getElementById("liveChapterWordCount");
+    const typingStreamContent = document.getElementById("typingStreamContent");
 
     const settings = storageService.getSettings();
     const delayMs = settings.delayBetweenChapters || 3500;
-    const chapters = this.currentStory.chapters;
-
-    let completedCount = chapters.filter(c => c.status === "completed").length;
+    const chapters = this.currentStory.chapters || [];
 
     for (let i = 0; i < chapters.length; i++) {
       if (!this.isWriting) break;
@@ -745,25 +831,23 @@ export class NovelController {
       if (chapter.status === "completed") continue;
 
       chapter.status = "generating";
-      this.renderChapterGenerationList();
+      if (activeChapterTitle) activeChapterTitle.textContent = `Chương ${chapter.chapterNumber}: ${chapter.title}`;
+      if (typingStreamContent) typingStreamContent.textContent = "";
+      if (liveChapterWordCount) liveChapterWordCount.textContent = "0 từ";
 
-      const progressBar = document.getElementById("writingProgressBar");
-      const progressText = document.getElementById("writingProgressText");
-      const percent = Math.round((i / chapters.length) * 100);
-
-      if (progressBar) progressBar.style.width = `${percent}%`;
-      if (progressText) progressText.textContent = `Đang viết Chương ${chapter.chapterNumber}/${chapters.length}: "${chapter.title}"... (${percent}%)`;
-
-      const liveContentEl = document.getElementById(`chapterLiveContent_${chapter.chapterNumber}`);
+      this.renderStep3Monitors();
 
       try {
         const generatedContent = await geminiService.generateChapterContent(
           this.currentStory,
           chapter.chapterNumber,
-          (streamChunk) => {
-            if (liveContentEl) {
-              liveContentEl.textContent += streamChunk;
-              liveContentEl.scrollTop = liveContentEl.scrollHeight;
+          (streamChunk, fullText) => {
+            if (typingStreamContent) {
+              typingStreamContent.textContent = fullText;
+              typingStreamContent.scrollTop = typingStreamContent.scrollHeight;
+            }
+            if (liveChapterWordCount) {
+              liveChapterWordCount.textContent = `${this.app.countWords(fullText)} từ`;
             }
           }
         );
@@ -771,39 +855,36 @@ export class NovelController {
         chapter.content = generatedContent;
         chapter.wordCount = this.app.countWords(generatedContent);
         chapter.status = "completed";
-        completedCount++;
 
         await this.app.saveCurrentStory();
-        this.renderChapterGenerationList();
+        this.renderStep3Monitors();
 
         if (i < chapters.length - 1 && this.isWriting) {
           const waitSec = Math.round(delayMs / 1000);
-          if (progressText) progressText.textContent = `⏳ Đang giãn cách ${waitSec}s chống chạm trần RPM trước khi viết chương ${i + 2}...`;
-          await new Promise(r => setTimeout(r, delayMs));
+          if (throttleIndicator) throttleIndicator.style.display = "inline-flex";
+          for (let sec = waitSec; sec > 0; sec--) {
+            if (!this.isWriting) break;
+            if (throttleCountdown) throttleCountdown.textContent = `${sec}`;
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          if (throttleIndicator) throttleIndicator.style.display = "none";
         }
 
       } catch (err) {
         console.error(`Lỗi khi viết chương ${chapter.chapterNumber}:`, err);
         chapter.status = "error";
-        this.renderChapterGenerationList();
+        this.renderStep3Monitors();
         this.app.showToast(`Lỗi viết chương ${chapter.chapterNumber}: ${err.message}`, "error");
         break;
       }
     }
 
     this.isWriting = false;
-    if (btnStart) btnStart.style.display = "inline-flex";
-    if (btnPause) btnPause.style.display = "none";
-    if (btnStop) btnStop.style.display = "none";
+    this.renderStep3Monitors();
 
     const allDone = chapters.every(c => c.status === "completed");
     if (allDone) {
-      const progressBar = document.getElementById("writingProgressBar");
-      const progressText = document.getElementById("writingProgressText");
-      if (progressBar) progressBar.style.width = "100%";
-      if (progressText) progressText.textContent = `🎉 Hoàn thành toàn bộ ${chapters.length} chương!`;
       this.app.showToast("🎉 Đã hoàn thành toàn bộ tác phẩm!", "success");
-
       setTimeout(() => {
         this.setupStep4View();
         this.goToStep(4);
@@ -831,7 +912,7 @@ export class NovelController {
     if (btnPause) btnPause.style.display = "none";
     if (btnStop) btnStop.style.display = "none";
     this.app.showToast("Đã dừng tiến trình viết truyện.", "warning");
-    this.renderChapterGenerationList();
+    this.renderStep3Monitors();
   }
 
   async regenerateSingleChapter(idx) {
@@ -840,18 +921,26 @@ export class NovelController {
 
     chapter.status = "generating";
     chapter.content = "";
-    this.renderChapterGenerationList();
+    this.renderStep3Monitors();
 
-    const liveContentEl = document.getElementById(`chapterLiveContent_${chapter.chapterNumber}`);
+    const typingStreamContent = document.getElementById("typingStreamContent");
+    const activeChapterTitle = document.getElementById("activeChapterTitle");
+    const liveChapterWordCount = document.getElementById("liveChapterWordCount");
+
+    if (activeChapterTitle) activeChapterTitle.textContent = `Chương ${chapter.chapterNumber}: ${chapter.title}`;
+    if (typingStreamContent) typingStreamContent.textContent = "";
 
     try {
       const generated = await geminiService.generateChapterContent(
         this.currentStory,
         chapter.chapterNumber,
-        (chunk) => {
-          if (liveContentEl) {
-            liveContentEl.textContent += chunk;
-            liveContentEl.scrollTop = liveContentEl.scrollHeight;
+        (chunk, fullText) => {
+          if (typingStreamContent) {
+            typingStreamContent.textContent = fullText;
+            typingStreamContent.scrollTop = typingStreamContent.scrollHeight;
+          }
+          if (liveChapterWordCount) {
+            liveChapterWordCount.textContent = `${this.app.countWords(fullText)} từ`;
           }
         }
       );
@@ -861,11 +950,11 @@ export class NovelController {
       chapter.status = "completed";
 
       await this.app.saveCurrentStory();
-      this.renderChapterGenerationList();
+      this.renderStep3Monitors();
       this.app.showToast(`Đã viết lại xong Chương ${chapter.chapterNumber}! ✨`, "success");
     } catch (e) {
       chapter.status = "error";
-      this.renderChapterGenerationList();
+      this.renderStep3Monitors();
       this.app.showToast(`Lỗi: ${e.message}`, "error");
     }
   }

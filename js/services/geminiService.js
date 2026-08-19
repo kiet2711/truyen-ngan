@@ -86,6 +86,10 @@ class GeminiService {
     }
   }
 
+  async testKey(key, model = "gemini-3.6-flash") {
+    return this.testApiKey(key, model);
+  }
+
   async testApiKey(key, model = "gemini-3.6-flash") {
     const url = `${BASE_API_URL}/${model}:generateContent?key=${key}`;
     const response = await fetch(url, {
@@ -191,9 +195,17 @@ Nhắc lại: Tuyệt đối không dùng tên hay địa điểm Việt Nam. S�
       if (resData.usageMetadata) {
         storageService.recordApiUsage(apiKey, resData.usageMetadata, model);
       }
-      const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+      const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "";
       const cleanJson = rawText.replace(/```json\s*|\s*```/g, "").trim();
-      return JSON.parse(cleanJson);
+      let parsed = JSON.parse(cleanJson);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && Array.isArray(parsed.concepts)) return parsed.concepts;
+      if (parsed && Array.isArray(parsed.data)) return parsed.data;
+      if (parsed && typeof parsed === "object") {
+        const arr = Object.values(parsed).find(v => Array.isArray(v));
+        if (arr) return arr;
+      }
+      return [parsed];
     });
   }
 
@@ -411,6 +423,26 @@ Hãy bắt đầu viết nội dung Chương ${currentChapter.index} ngay bây g
       storageService.recordApiUsage(apiKey, recordedUsage, model);
 
       return fullText.trim();
+    });
+  }
+
+  async generateDetailedOutline(concept, params = {}, onProgress = null) {
+    const mergedParams = {
+      chosenConcept: concept || {},
+      selectedTags: params.selectedTags || (concept ? [concept.title] : []),
+      chapterCount: params.chapterCount || 6,
+      ...params
+    };
+    return this.generateOutlineFromConcept(mergedParams, onProgress);
+  }
+
+  async generateChapterContent(story, chapterNumber, onChunk = null, onStatus = null) {
+    const idx = typeof chapterNumber === "number" ? chapterNumber - 1 : 0;
+    return this.generateChapterStream({
+      story,
+      chapterIndex: Math.max(0, idx),
+      onChunk,
+      onStatus
     });
   }
 }

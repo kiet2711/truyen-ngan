@@ -2205,11 +2205,56 @@ body {
   gap: 8px;
 }
 
+.trans-config-style-custom {
+  flex: 1;
+  min-width: 280px;
+  align-items: flex-start;
+}
+
+.trans-style-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.trans-style-chips-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btn-style-chip {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-style-chip:hover {
+  background: rgba(139, 92, 246, 0.15);
+  color: #c084fc;
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.btn-style-chip.active {
+  background: rgba(139, 92, 246, 0.25);
+  color: #f3e8ff;
+  border-color: #8b5cf6;
+}
+
 .trans-config-label {
   font-size: 12px;
   font-weight: 600;
   color: #cbd5e1;
   white-space: nowrap;
+  margin-top: 6px;
 }
 
 .param-select-sm {

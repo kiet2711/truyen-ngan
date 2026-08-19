@@ -159,23 +159,23 @@ export class TranslatorService {
   // ==================== TRANSLATION PROMPTS & EXECUTION ====================
 
   /**
-   * Tạo System Prompt theo phong cách dịch
+   * Tạo System Prompt theo phong cách dịch (Người dùng tự nhập hoặc AI tự động suy luận)
    */
-  getTranslationSystemPrompt(style = "zhihu", type = "srt") {
+  getTranslationSystemPrompt(userCustomStyle = "", type = "srt") {
     let styleGuide = "";
-    if (style === "zhihu") {
-      styleGuide = `Phong cách dịch: PHIM NGẮN ZHIHU / SHORT DRAMA TRUNG QUỐC.
-- Câu từ sắc sảo, dồn dập, gãy gọn, giữ trọn vẹn kịch tính và cảm xúc của nhân vật.
-- Dịch thoát nghĩa, tự nhiên, đúng ngữ cảnh đối thoại (vả mặt, tranh cãi, đe dọa, giễu cợt, lãng mạn).
-- Giữ nguyên các danh xưng và tên nhân vật theo âm Hán Việt chuẩn mực (Cố tổng, Lục gia, Thẩm tiểu thư, Thái tử gia...).`;
-    } else if (style === "literary") {
-      styleGuide = `Phong cách dịch: THUẦN VIỆT VĂN HỌC TRAU CHUỐT.
-- Văn phong mượt mà, uyển chuyển, giàu hình ảnh và nhạc tính.
-- Dịch thoát ý tối đa, câu văn thuần Việt tự nhiên như tác phẩm văn học Việt Nam.`;
+
+    if (userCustomStyle && typeof userCustomStyle === "string" && userCustomStyle.trim()) {
+      styleGuide = `PHONG CÁCH DỊCH THEO YÊU CẦU CỦA NGƯỜI DÙNG:
+"${userCustomStyle.trim()}"
+- Hãy bám sát và tuân thủ tuyệt đối phong cách dịch, giọng văn và yêu cầu trên.
+- Dịch thoát nghĩa, trôi chảy, đúng sắc thái nhân vật và ngữ cảnh của câu chuyện.
+- Sử dụng tên nhân vật và danh xưng theo âm Hán Việt chuẩn mực và trang trọng.`;
     } else {
-      // convert
-      styleGuide = `Phong cách dịch: CONVERT HÁN VIỆT CHUẨN XÁC DỄ ĐỌC.
-- Giữ sát nghĩa nguyên tác, bảo lưu danh xưng và thuật ngữ cổ trang/tiên hiệp/đô thị.`;
+      styleGuide = `TỰ ĐỘNG SUY LUẬN NGỮ CẢNH & THỂ LOẠI (AUTO-INFERENCE):
+- Hãy đọc kỹ văn bản gốc để tự động nhận diện thể loại (phim ngắn Zhihu vả mặt, hiện đại đô thị, cổ trang tiên hiệp, hào môn thế gia, hài hước, kinh dị...).
+- Tự động điều chỉnh giọng văn cho phù hợp nhất: kịch tính dồn dập cho phim ngắn, mềm mại giàu cảm xúc cho ngôn tình, trang trọng khí thế cho tiên hiệp/cổ trang.
+- Dịch thoát nghĩa, tự nhiên, thuần Việt, tuyệt đối không dịch thô kiểu "word-by-word" máy móc.
+- Giữ nguyên các tên riêng, địa danh và danh xưng nhân vật theo âm Hán Việt chuẩn mực (Cố tổng, Lục gia, Thẩm tiểu thư...).`;
     }
 
     if (type === "srt") {

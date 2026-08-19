@@ -1783,6 +1783,35 @@ class NovelStudioApp {
       transModelSelect.addEventListener("change", () => this.updateTransEstimate());
     }
 
+    // Translation Custom Style Chips
+    const styleInput = document.getElementById("transStyleInput");
+    const styleChips = document.querySelectorAll(".btn-style-chip");
+
+    styleChips.forEach(chip => {
+      chip.addEventListener("click", () => {
+        const styleVal = chip.getAttribute("data-style") || "";
+        if (styleInput) {
+          styleInput.value = styleVal;
+        }
+        styleChips.forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+      });
+    });
+
+    if (styleInput) {
+      styleInput.addEventListener("input", () => {
+        const currentVal = styleInput.value.trim();
+        styleChips.forEach(chip => {
+          const chipVal = chip.getAttribute("data-style") || "";
+          if (chipVal === currentVal) {
+            chip.classList.add("active");
+          } else {
+            chip.classList.remove("active");
+          }
+        });
+      });
+    }
+
     const dropzone = document.getElementById("transDropzone");
     const fileInput = document.getElementById("transFileInput");
     const dropzoneTrigger = document.getElementById("dropzoneTrigger");
@@ -2374,9 +2403,9 @@ class NovelStudioApp {
     }
 
     const modelSelect = document.getElementById("transModelSelect");
-    const styleSelect = document.getElementById("transStyleSelect");
+    const styleInputEl = document.getElementById("transStyleInput");
     const modelId = modelSelect ? modelSelect.value : "gemini-3.6-flash";
-    const style = styleSelect ? styleSelect.value : "zhihu";
+    const customStyle = styleInputEl ? styleInputEl.value.trim() : "";
 
     // UI state: Translating
     this.setTransUiState(true);
@@ -2409,12 +2438,12 @@ class NovelStudioApp {
         if (this.transParsedSrt.length === 0) {
           throw new Error("Không thể nhận diện định dạng SRT. Vui lòng kiểm tra lại file phụ đề.");
         }
-        await translatorService.translateSrt(this.transParsedSrt, modelId, style, onProgress);
+        await translatorService.translateSrt(this.transParsedSrt, modelId, customStyle, onProgress);
         if (resultOutput) {
           resultOutput.value = translatorService.buildSrt(this.transParsedSrt, "translated");
         }
       } else {
-        const fullTranslated = await translatorService.translateNovel(sourceText, modelId, style, onProgress);
+        const fullTranslated = await translatorService.translateNovel(sourceText, modelId, customStyle, onProgress);
         this.transTranslatedText = fullTranslated;
         if (resultOutput) {
           resultOutput.value = fullTranslated;

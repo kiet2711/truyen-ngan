@@ -565,13 +565,18 @@
               </select>
             </div>
 
-            <div class="trans-config-item">
+            <div class="trans-config-item trans-config-style-custom">
               <label class="trans-config-label">🎭 Phong Cách Dịch:</label>
-              <select id="transStyleSelect" class="param-select param-select-sm">
-                <option value="zhihu" selected>Phim Ngắn Zhihu (Kịch tính, vả mặt, dồn dập)</option>
-                <option value="literary">Thuần Việt Văn Học (Mượt mà, trau chuốt, thoát ý)</option>
-                <option value="convert">Convert Hán Việt (Sát nghĩa, chuẩn danh xưng)</option>
-              </select>
+              <div class="trans-style-input-wrap">
+                <input type="text" id="transStyleInput" class="param-input" placeholder="Để trống để AI tự đọc và suy luận (hoặc tự nhập: Vả mặt Zhihu, Cổ trang tiên hiệp, Hài hước...)">
+                <div class="trans-style-chips-row">
+                  <button type="button" class="btn-style-chip active" data-style="">✨ Tự Động AI (Auto)</button>
+                  <button type="button" class="btn-style-chip" data-style="Phim ngắn Zhihu vả mặt kịch tính, nhịp điệu dồn dập, sắc bén">🎬 Phim Ngắn Zhihu</button>
+                  <button type="button" class="btn-style-chip" data-style="Thuần Việt văn học trau chuốt, mượt mà, giàu cảm xúc, thoát ý">📖 Thuần Việt Văn Học</button>
+                  <button type="button" class="btn-style-chip" data-style="Cổ trang tiên hiệp, bảo lưu danh xưng và đại từ xưng hô Hán Việt">⚔️ Cổ Trang Tiên Hiệp</button>
+                  <button type="button" class="btn-style-chip" data-style="Hài hước, dí dỏm, châm biếm, bắt trend giới trẻ">😂 Hài Hước Bắt Trend</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

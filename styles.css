@@ -1927,7 +1927,7 @@ body {
 
 .quota-progress-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 
@@ -1966,6 +1966,10 @@ body {
 
 .quota-progress-bar.rpm-bar {
   background: linear-gradient(90deg, #8b5cf6, #c084fc);
+}
+
+.quota-progress-bar.tpm-bar {
+  background: linear-gradient(90deg, #ec4899, #f472b6);
 }
 
 .quota-progress-bar.rpd-bar {

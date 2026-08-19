@@ -220,6 +220,7 @@ class StorageService {
     if (!keyStats.models[modelKey]) {
       keyStats.models[modelKey] = {
         rpmTimestamps: [],
+        tpmTimestamps: [],
         requestsToday: 0,
         totalRequests: 0,
         promptTokens: 0,
@@ -231,7 +232,7 @@ class StorageService {
 
     const modelStats = keyStats.models[modelKey];
 
-    // Dọn dẹp sliding window 60s (RPM)
+    // Dọn dẹp sliding window 60s (RPM & TPM)
     const windowStart = now - 60000;
     modelStats.rpmTimestamps = (modelStats.rpmTimestamps || []).filter(ts => ts > windowStart);
     modelStats.rpmTimestamps.push(now);
@@ -250,6 +251,11 @@ class StorageService {
     modelStats.candidatesTokens = (modelStats.candidatesTokens || 0) + candidatesCount;
     modelStats.totalTokens = (modelStats.totalTokens || 0) + totalCount;
 
+    // Sliding window 60s cho TPM (Tokens Per Minute)
+    if (!modelStats.tpmTimestamps) modelStats.tpmTimestamps = [];
+    modelStats.tpmTimestamps = modelStats.tpmTimestamps.filter(item => item.ts > windowStart);
+    modelStats.tpmTimestamps.push({ ts: now, tokens: totalCount });
+
     this.saveRawApiUsageData(data);
 
     // Phát sự kiện cập nhật để UI lắng nghe và vẽ lại tức thì
@@ -263,7 +269,7 @@ class StorageService {
   }
 
   /**
-   * Lấy thống kê sử dụng (RPM, RPD, Tokens) - TÍNH CHÍNH XÁC RIÊNG CHO TỪNG MODEL
+   * Lấy thống kê sử dụng (RPM, TPM, RPD, Tokens) - TÍNH CHÍNH XÁC RIÊNG CHO TỪNG MODEL
    */
   getApiUsageStats(targetModel = null) {
     const data = this.getRawApiUsageData();
@@ -278,6 +284,7 @@ class StorageService {
 
     // 1. Thống kê tổng hợp cho Model đang chọn (Active Model)
     let activeModelRpm = 0;
+    let activeModelTpm = 0;
     let activeModelRpd = 0;
     let activeModelPromptTokens = 0;
     let activeModelCandidatesTokens = 0;
@@ -293,6 +300,7 @@ class StorageService {
         category: allModelLimits[m].category,
         limits: allModelLimits[m],
         rpm: 0,
+        tpm: 0,
         rpd: 0,
         totalTokens: 0,
         promptTokens: 0,
@@ -319,14 +327,17 @@ class StorageService {
 
       const keyModels = keyData.models || {};
       const activeStatsForThisKey = keyModels[selectedModel] || {
-        rpmTimestamps: [], requestsToday: 0, totalRequests: 0, promptTokens: 0, candidatesTokens: 0, totalTokens: 0, lastUsedAt: null
+        rpmTimestamps: [], tpmTimestamps: [], requestsToday: 0, totalRequests: 0, promptTokens: 0, candidatesTokens: 0, totalTokens: 0, lastUsedAt: null
       };
 
       const validTimestamps = (activeStatsForThisKey.rpmTimestamps || []).filter(ts => ts > windowStart);
+      const validTpmEntries = (activeStatsForThisKey.tpmTimestamps || []).filter(item => item.ts > windowStart);
       const rpm = validTimestamps.length;
+      const tpm = validTpmEntries.reduce((sum, item) => sum + (item.tokens || 0), 0);
       const rpd = activeStatsForThisKey.requestsToday || 0;
 
       activeModelRpm += rpm;
+      activeModelTpm += tpm;
       activeModelRpd += rpd;
       activeModelPromptTokens += (activeStatsForThisKey.promptTokens || 0);
       activeModelCandidatesTokens += (activeStatsForThisKey.candidatesTokens || 0);
@@ -342,6 +353,7 @@ class StorageService {
             category: "Text-out models",
             limits: this.getModelLimits(m),
             rpm: 0,
+            tpm: 0,
             rpd: 0,
             totalTokens: 0,
             promptTokens: 0,
@@ -351,7 +363,9 @@ class StorageService {
         }
         const mStats = keyModels[m];
         const mValidTs = (mStats.rpmTimestamps || []).filter(ts => ts > windowStart);
+        const mValidTpm = (mStats.tpmTimestamps || []).filter(item => item.ts > windowStart);
         allModelsSummary[m].rpm += mValidTs.length;
+        allModelsSummary[m].tpm += mValidTpm.reduce((sum, item) => sum + (item.tokens || 0), 0);
         allModelsSummary[m].rpd += (mStats.requestsToday || 0);
         allModelsSummary[m].totalTokens += (mStats.totalTokens || 0);
         allModelsSummary[m].promptTokens += (mStats.promptTokens || 0);
@@ -368,6 +382,8 @@ class StorageService {
         activeModel: selectedModel,
         rpm,
         rpmLimit: selectedModelLimits.rpm,
+        tpm,
+        tpmLimit: selectedModelLimits.tpm,
         rpd,
         rpdLimit: selectedModelLimits.rpd,
         totalTokens: activeStatsForThisKey.totalTokens || 0,
@@ -381,9 +397,10 @@ class StorageService {
         name: selectedModelLimits.name,
         rpm: activeModelRpm,
         rpmLimit: selectedModelLimits.rpm,
+        tpm: activeModelTpm,
+        tpmLimit: selectedModelLimits.tpm,
         rpd: activeModelRpd,
         rpdLimit: selectedModelLimits.rpd,
-        tpmLimit: selectedModelLimits.tpm,
         promptTokens: activeModelPromptTokens,
         candidatesTokens: activeModelCandidatesTokens,
         totalTokens: activeModelTotalTokens,

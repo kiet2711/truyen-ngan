@@ -118,6 +118,8 @@ class NovelStudioApp {
 
     const modalRpmLabel = document.getElementById("modalRpmLabel");
     const modalRpmBar = document.getElementById("modalRpmBar");
+    const modalTpmLabel = document.getElementById("modalTpmLabel");
+    const modalTpmBar = document.getElementById("modalTpmBar");
     const modalRpdLabel = document.getElementById("modalRpdLabel");
     const modalRpdBar = document.getElementById("modalRpdBar");
     const modalPromptTokens = document.getElementById("modalPromptTokens");
@@ -136,6 +138,15 @@ class NovelStudioApp {
       modalRpmBar.className = "quota-progress-bar rpm-bar";
       if (rpmPct >= 90) modalRpmBar.classList.add("danger");
       else if (rpmPct >= 65) modalRpmBar.classList.add("warning");
+    }
+
+    if (modalTpmLabel && modalTpmBar) {
+      modalTpmLabel.textContent = `${this.formatTokenCount(activeModel.tpm)} / ${this.formatTokenCount(activeModel.tpmLimit)} TPM`;
+      const tpmPct = Math.min(100, Math.round((activeModel.tpm / activeModel.tpmLimit) * 100));
+      modalTpmBar.style.width = `${tpmPct}%`;
+      modalTpmBar.className = "quota-progress-bar tpm-bar";
+      if (tpmPct >= 90) modalTpmBar.classList.add("danger");
+      else if (tpmPct >= 65) modalTpmBar.classList.add("warning");
     }
 
     if (modalRpdLabel && modalRpdBar) {

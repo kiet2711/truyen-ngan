@@ -196,7 +196,7 @@ export class AudioTtsService {
       auto_split: true
     };
 
-    const startResp = await fetch(`${baseUrl}/api/tts/async`, {
+    const startResp = await fetch(`${baseUrl}/api/tts/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -224,46 +224,52 @@ export class AudioTtsService {
         throw new Error("Người dùng đã hủy tiến trình tạo audio.");
       }
 
-      const statusResp = await fetch(`${baseUrl}/api/tasks/${taskId}`);
+      const statusResp = await fetch(`${baseUrl}/api/tts/status/${taskId}`);
       if (!statusResp.ok) continue;
 
       const taskStatus = await statusResp.json();
+      const progressPercent = typeof taskStatus.percent === "number" ? taskStatus.percent : 0;
+      const completedChunks = taskStatus.completed_chunks || 0;
+      const totalChunks = taskStatus.total_chunks || chunks.length;
 
       if (onProgress) {
         onProgress({
           status: taskStatus.status,
-          progress: taskStatus.progress || 0,
-          completedChunks: taskStatus.completed_chunks || 0,
-          totalChunks: taskStatus.total_chunks || chunks.length,
-          message: taskStatus.message || `Đang tạo audio ${taskStatus.completed_chunks}/${taskStatus.total_chunks}...`,
-          eta: taskStatus.eta || null
+          progress: progressPercent,
+          completedChunks: completedChunks,
+          totalChunks: totalChunks,
+          message: `Đang tạo audio ${completedChunks}/${totalChunks} đoạn (${progressPercent}%)...`
         });
       }
 
       if (taskStatus.status === "completed") {
         // Tải dữ liệu file audio MP3
-        const audioResp = await fetch(`${baseUrl}/api/tasks/${taskId}/audio`);
+        const audioResp = await fetch(`${baseUrl}/api/tts/audio/${taskId}`);
         if (!audioResp.ok) {
           throw new Error("Không thể tải file âm thanh sau khi hoàn thành.");
         }
 
         const audioBlob = await audioResp.blob();
-        if (this.currentAudioUrl) {
-          URL.revokeObjectURL(this.currentAudioUrl);
+        if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+          if (this.currentAudioUrl && this.currentAudioUrl.startsWith("blob:")) {
+            URL.revokeObjectURL(this.currentAudioUrl);
+          }
+          this.currentAudioUrl = URL.createObjectURL(audioBlob);
+        } else {
+          this.currentAudioUrl = `${baseUrl}/api/tts/audio/${taskId}`;
         }
-        this.currentAudioUrl = URL.createObjectURL(audioBlob);
         this.isGenerating = false;
 
         return {
           audioUrl: this.currentAudioUrl,
           audioBlob,
-          duration: taskStatus.duration || 0,
-          totalChunks: taskStatus.total_chunks
+          duration: taskStatus.duration_seconds || 0,
+          totalChunks: totalChunks
         };
 
-      } else if (taskStatus.status === "failed") {
+      } else if (taskStatus.status === "error" || taskStatus.status === "failed") {
         this.isGenerating = false;
-        throw new Error(taskStatus.error || "Tạo audio thất bại trên máy chủ CapCut.");
+        throw new Error(taskStatus.error_message || taskStatus.error || "Tạo audio thất bại trên máy chủ CapCut.");
       }
     }
 

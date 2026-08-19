@@ -882,47 +882,79 @@ export class NovelController {
 
     const totalWords = story.chapters?.reduce((sum, c) => sum + (c.wordCount || 0), 0) || 0;
     const titleEl = document.getElementById("readerStoryTitle");
-    const metaEl = document.getElementById("readerStoryMeta");
-    const contentEl = document.getElementById("readerFullContent");
+    const loglineEl = document.getElementById("readerStoryLogline");
+    const totalWordsEl = document.getElementById("readerTotalWords");
+    const estTimeEl = document.getElementById("readerEstReadingTime");
+    const chapterSelect = document.getElementById("readerChapterSelect");
+    const bodyEl = document.getElementById("readerBody");
 
     if (titleEl) titleEl.textContent = story.title;
-    if (metaEl) {
-      metaEl.innerHTML = `
-        <span class="badge badge-pink">${story.params?.tone || 'Zhihu High Drama'}</span>
-        <span>•</span>
-        <span>${story.chapters?.length || 0} chương</span>
-        <span>•</span>
-        <strong style="color: var(--accent-emerald);">${totalWords.toLocaleString()} từ</strong>
-      `;
+    if (loglineEl) loglineEl.textContent = story.concept?.premise || "";
+    if (totalWordsEl) totalWordsEl.textContent = `${totalWords.toLocaleString()} từ`;
+    if (estTimeEl) {
+      const mins = Math.max(1, Math.round(totalWords / 250));
+      estTimeEl.textContent = `~${mins} phút đọc / nghe`;
     }
 
-    if (contentEl) {
-      contentEl.innerHTML = (story.chapters || []).map(ch => `
-        <div class="reader-chapter-block" style="margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,0.06);">
-          <h2 style="font-size: 18px; font-weight: 800; color: var(--accent-pink); margin-bottom: 16px;">
-            Chương ${ch.chapterNumber}: ${ch.title}
-          </h2>
-          <div style="font-size: 15px; line-height: 1.85; color: var(--text-main); white-space: pre-wrap;">${ch.content || '<em style="color: var(--text-dim);">(Chương này chưa có nội dung)</em>'}</div>
-        </div>
-      `).join("");
+    if (chapterSelect) {
+      chapterSelect.innerHTML = `<option value="">-- Chọn chương --</option>` +
+        (story.chapters || []).map(c => `<option value="chapter_read_${c.chapterNumber}">Chương ${c.chapterNumber}: ${c.title}</option>`).join("");
+    }
+
+    if (bodyEl) {
+      if (this.isAudioCleaned) {
+        const cleanAudioContent = this.buildCleanAudioText();
+        bodyEl.innerHTML = `
+          <div class="audio-mode-banner">
+            <div class="audio-mode-banner-content">
+              <span class="audio-banner-icon">✨</span>
+              <div>
+                <strong>Chế độ Xem Bản Dịch Âm / Audio TTS đã kích hoạt:</strong>
+                <div style="font-size: 12px; color: var(--text-dim);">Toàn bộ số đã được chuyển thành chữ tiếng Việt, loại bỏ markdown để sẵn sàng phát âm.</div>
+              </div>
+            </div>
+            <div class="audio-banner-tags">
+              <span class="audio-tag">${this.audioRemoveTitles ? '✓ Đã ẩn tiêu đề' : 'Hiện tiêu đề'}</span>
+              <span class="audio-tag">${this.audioSingleParagraph ? '✓ Gom 1 đoạn' : 'Đoạn rời'}</span>
+            </div>
+          </div>
+          <div style="font-size: 15.5px; line-height: 1.9; white-space: pre-wrap; color: var(--text-main); font-family: var(--font-reader-serif);">
+            ${cleanAudioContent}
+          </div>
+        `;
+      } else {
+        bodyEl.innerHTML = (story.chapters || []).map(ch => `
+          <div class="reader-chapter-block" id="chapter_read_${ch.chapterNumber}">
+            <h2 style="font-size: 18px; font-weight: 800; color: var(--accent-pink); margin-bottom: 16px;">
+              Chương ${ch.chapterNumber}: ${ch.title}
+            </h2>
+            <div style="font-size: 15px; line-height: 1.85; color: var(--text-main); white-space: pre-wrap;">${ch.content || '<em style="color: var(--text-dim);">(Chương này chưa có nội dung)</em>'}</div>
+          </div>
+        `).join("");
+      }
     }
   }
 
   buildCleanAudioText() {
     if (!this.currentStory || !this.currentStory.chapters) return "";
-    return this.currentStory.chapters.map(ch => {
+    let fullText = this.currentStory.chapters.map(ch => {
       const titleLine = this.audioRemoveTitles ? "" : `Chương ${ch.chapterNumber}: ${ch.title}\n\n`;
       const cleaned = normalizeTextForAudio(ch.content || "");
       return titleLine + cleaned;
     }).join("\n\n---\n\n");
+
+    if (this.audioSingleParagraph) {
+      fullText = fullText.replace(/\n+/g, " ").replace(/\s*---\s*/g, " ");
+    }
+    return fullText;
   }
 
   exportTxt() {
     if (!this.currentStory) return;
-    const text = this.currentStory.chapters.map(c => `=== CHƯƠNG ${c.chapterNumber}: ${c.title} ===\n\n${c.content}`).join("\n\n\n");
+    const text = this.buildCleanAudioText() || this.currentStory.chapters.map(c => `=== CHƯƠNG ${c.chapterNumber}: ${c.title} ===\n\n${c.content}`).join("\n\n\n");
     const filename = `${this.currentStory.title.replace(/[\/\\:*?"<>|]/g, "_")}.txt`;
     this.app.triggerDownload(text, filename, "text/plain;charset=utf-8");
-    this.app.showToast(`Đã xuất file: ${filename}`, "success");
+    this.app.showToast(`Đã xuất file TXT: ${filename}`, "success");
   }
 
   exportMarkdown() {
@@ -932,7 +964,7 @@ export class NovelController {
       this.currentStory.chapters.map(c => `## Chương ${c.chapterNumber}: ${c.title}\n\n${c.content}`).join("\n\n---\n\n");
     const filename = `${this.currentStory.title.replace(/[\/\\:*?"<>|]/g, "_")}.md`;
     this.app.triggerDownload(md, filename, "text/markdown;charset=utf-8");
-    this.app.showToast(`Đã xuất file: ${filename}`, "success");
+    this.app.showToast(`Đã xuất file Markdown: ${filename}`, "success");
   }
 
   exportHtml() {
@@ -965,11 +997,10 @@ export class NovelController {
 
     const filename = `${this.currentStory.title.replace(/[\/\\:*?"<>|]/g, "_")}.html`;
     this.app.triggerDownload(html, filename, "text/html;charset=utf-8");
-    this.app.showToast(`Đã xuất file: ${filename}`, "success");
+    this.app.showToast(`Đã xuất file HTML: ${filename}`, "success");
   }
 
   exportDocx() {
-    // Xuất dạng HTML tương thích Word .doc
     if (!this.currentStory) return;
     const bodyContent = this.currentStory.chapters.map(c => `
       <h2>Chương ${c.chapterNumber}: ${c.title}</h2>
@@ -1070,27 +1101,140 @@ export class NovelController {
       btnStopWriting.addEventListener("click", () => this.stopWriting());
     }
 
-    // Step 4 Events
-    const btnExportTxt = document.getElementById("btnExportTxt");
-    if (btnExportTxt) btnExportTxt.addEventListener("click", () => this.exportTxt());
+    // Step 4 Reader Toolbar Events
+    const btnThemeDark = document.getElementById("btnThemeDark");
+    const btnThemeSepia = document.getElementById("btnThemeSepia");
+    const btnThemeLight = document.getElementById("btnThemeLight");
+    const readerContainer = document.getElementById("readerContainer");
 
-    const btnExportMd = document.getElementById("btnExportMd");
-    if (btnExportMd) btnExportMd.addEventListener("click", () => this.exportMarkdown());
+    const setTheme = (themeName) => {
+      [btnThemeDark, btnThemeSepia, btnThemeLight].forEach(b => b?.classList.remove("active"));
+      if (themeName === "sepia") {
+        btnThemeSepia?.classList.add("active");
+        if (readerContainer) {
+          readerContainer.style.setProperty("--reader-bg", "#fbf0d9");
+          readerContainer.style.setProperty("--reader-text", "#433422");
+          readerContainer.style.setProperty("--reader-card", "#f4e4c1");
+          readerContainer.style.setProperty("--reader-border", "#e2cf9f");
+        }
+      } else if (themeName === "light") {
+        btnThemeLight?.classList.add("active");
+        if (readerContainer) {
+          readerContainer.style.setProperty("--reader-bg", "#ffffff");
+          readerContainer.style.setProperty("--reader-text", "#1e293b");
+          readerContainer.style.setProperty("--reader-card", "#f8fafc");
+          readerContainer.style.setProperty("--reader-border", "#e2e8f0");
+        }
+      } else {
+        btnThemeDark?.classList.add("active");
+        if (readerContainer) {
+          readerContainer.style.setProperty("--reader-bg", "#0f1422");
+          readerContainer.style.setProperty("--reader-text", "#e2e8f0");
+          readerContainer.style.setProperty("--reader-card", "#172033");
+          readerContainer.style.setProperty("--reader-border", "rgba(255, 255, 255, 0.1)");
+        }
+      }
+    };
 
-    const btnExportHtml = document.getElementById("btnExportHtml");
-    if (btnExportHtml) btnExportHtml.addEventListener("click", () => this.exportHtml());
+    if (btnThemeDark) btnThemeDark.addEventListener("click", () => setTheme("dark"));
+    if (btnThemeSepia) btnThemeSepia.addEventListener("click", () => setTheme("sepia"));
+    if (btnThemeLight) btnThemeLight.addEventListener("click", () => setTheme("light"));
 
-    const btnExportDocx = document.getElementById("btnExportDocx");
-    if (btnExportDocx) btnExportDocx.addEventListener("click", () => this.exportDocx());
+    const fontRange = document.getElementById("readerFontSizeRange");
+    const fontDisplay = document.getElementById("fontSizeDisplay");
+    if (fontRange && readerContainer) {
+      fontRange.addEventListener("input", (e) => {
+        const val = e.target.value;
+        readerContainer.style.setProperty("--reader-size", `${val}px`);
+        if (fontDisplay) fontDisplay.textContent = `${val}px`;
+      });
+    }
 
-    const btnExportEpub = document.getElementById("btnExportEpub");
-    if (btnExportEpub) btnExportEpub.addEventListener("click", () => this.exportEpub());
+    const btnCleanAudio = document.getElementById("btnCleanForAudio");
+    const btnRestoreText = document.getElementById("btnRestoreOriginalText");
+    if (btnCleanAudio) {
+      btnCleanAudio.addEventListener("click", () => {
+        this.isAudioCleaned = true;
+        btnCleanAudio.style.display = "none";
+        if (btnRestoreText) btnRestoreText.style.display = "inline-flex";
+        this.renderReaderMode();
+        this.app.showToast("Đã chuẩn hóa toàn bộ văn bản cho Audio / TTS! ✨", "success");
+      });
+    }
 
-    const btnSendAudioPortal = document.querySelector(".card-audio-portal .btn-audio-portal");
-    if (btnSendAudioPortal) {
-      btnSendAudioPortal.addEventListener("click", (e) => {
+    if (btnRestoreText) {
+      btnRestoreText.addEventListener("click", () => {
+        this.isAudioCleaned = false;
+        btnRestoreText.style.display = "none";
+        if (btnCleanAudio) btnCleanAudio.style.display = "inline-flex";
+        this.renderReaderMode();
+        this.app.showToast("Đã khôi phục về bản gốc ban đầu.", "info");
+      });
+    }
+
+    const chkRemoveTitles = document.getElementById("chkAudioRemoveTitles");
+    if (chkRemoveTitles) {
+      chkRemoveTitles.addEventListener("change", (e) => {
+        this.audioRemoveTitles = e.target.checked;
+        if (this.isAudioCleaned) this.renderReaderMode();
+      });
+    }
+
+    const chkSinglePara = document.getElementById("chkAudioSingleParagraph");
+    if (chkSinglePara) {
+      chkSinglePara.addEventListener("change", (e) => {
+        this.audioSingleParagraph = e.target.checked;
+        if (this.isAudioCleaned) this.renderReaderMode();
+      });
+    }
+
+    const btnQuickCopy = document.getElementById("btnQuickCopyCleanText");
+    if (btnQuickCopy) {
+      btnQuickCopy.addEventListener("click", async () => {
+        const text = this.buildCleanAudioText() || (this.currentStory?.chapters || []).map(c => c.content).join("\n\n");
+        if (!text) {
+          this.app.showToast("Chưa có nội dung truyện để sao chép!", "warning");
+          return;
+        }
+        await navigator.clipboard.writeText(text);
+        this.app.showToast("Đã sao chép toàn bộ văn bản truyện vào clipboard! 📋", "success");
+      });
+    }
+
+    const btnQuickTxt = document.getElementById("btnQuickDownloadAudioTxt");
+    if (btnQuickTxt) {
+      btnQuickTxt.addEventListener("click", () => this.exportTxt());
+    }
+
+    const btnQuickMd = document.getElementById("btnQuickDownloadFullMarkdown");
+    if (btnQuickMd) {
+      btnQuickMd.addEventListener("click", () => this.exportMarkdown());
+    }
+
+    const btnQuickAudio = document.getElementById("btnQuickOpenAudio");
+    if (btnQuickAudio) {
+      btnQuickAudio.addEventListener("click", (e) => {
         e.preventDefault();
         this.app.sendStoryToAudioStudio();
+      });
+    }
+
+    const chapterSelect = document.getElementById("readerChapterSelect");
+    if (chapterSelect) {
+      chapterSelect.addEventListener("change", (e) => {
+        const targetId = e.target.value;
+        if (targetId) {
+          const el = document.getElementById(targetId);
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      });
+    }
+
+    const btnScrollTop = document.getElementById("btnReaderScrollTop");
+    if (btnScrollTop) {
+      btnScrollTop.addEventListener("click", () => {
+        const bodyEl = document.getElementById("readerBody");
+        if (bodyEl) bodyEl.scrollTo({ top: 0, behavior: "smooth" });
       });
     }
   }

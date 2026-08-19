@@ -1011,8 +1011,8 @@ body {
   border: 1px solid var(--reader-border, rgba(255, 255, 255, 0.1));
   border-radius: var(--radius-lg);
   margin-bottom: 24px;
-  height: 580px;
-  max-height: 65vh;
+  height: calc(100vh - 190px);
+  min-height: 650px;
   display: flex;
   flex-direction: column;
   overflow: hidden;

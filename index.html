@@ -417,9 +417,12 @@
           <button id="btnQuickDownloadAudioTxt" class="btn btn-success btn-sm" title="Tải file .txt chuẩn Audio/TTS">
             📥 Tải .TXT Audio
           </button>
-          <a href="https://tao-audio-truyen.onrender.com" target="_blank" rel="noopener noreferrer" class="btn btn-audio-nav btn-sm" id="btnQuickOpenAudio" title="Chuyển tới trang Tạo Audio Truyện (https://tao-audio-truyen.onrender.com)">
-            <span class="audio-pulse-dot"></span> 🎙️ Web Tạo Audio ↗
-          </a>
+          <button id="btnQuickDownloadFullMarkdown" class="btn btn-secondary btn-sm" title="Tải file .md đầy đủ toàn bộ truyện">
+            📥 Tải .MD
+          </button>
+          <button class="btn btn-audio-nav btn-sm" id="btnQuickOpenAudio" title="Chuyển toàn bộ truyện sang Tab 3 Tạo Audio Truyện">
+            <span class="audio-pulse-dot"></span> 🎙️ Chuyển Sang Tạo Audio ↗
+          </button>
         </div>
 
         <!-- Audio Format Options Bar (Active by default for TTS) -->
@@ -465,75 +468,6 @@
         <!-- Scrollable Chapter Content -->
         <div class="reader-body" id="readerBody">
           <!-- Rendered chapters via JS -->
-        </div>
-      </div>
-
-      <!-- Export Toolbox Card -->
-      <div class="studio-card export-section-card">
-        <div class="card-header-row">
-          <div class="card-title">
-            <span>💾</span> Xuất Bản & Tải Về Sẵn Sàng Cho Audio
-          </div>
-        </div>
-
-        <div class="export-grid">
-          <div class="export-card card-audio-export">
-            <div style="font-size: 26px;">🎙️</div>
-            <strong>File .TXT Chuẩn Audio (Khuyên dùng)</strong>
-            <p style="font-size: 12px; color: var(--text-muted);">
-              Đã làm sạch số, xóa toàn bộ markdown & tiêu đề chương. Gom liền mạch dán trực tiếp vào CapCut, Vbee, Edge-TTS, ElevenLabs.
-            </p>
-            <button id="btnDownloadAudioTxt" class="btn btn-success btn-sm">
-              📥 Tải File .TXT Chuẩn Audio
-            </button>
-          </div>
-
-          <div class="export-card card-audio-portal">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-              <div style="font-size: 26px;">🎧</div>
-              <span class="badge badge-emerald">Web App</span>
-            </div>
-            <strong>Trang Tạo Audio Truyện</strong>
-            <p style="font-size: 12px; color: var(--text-muted);">
-              Chuyển hướng trực tiếp tới trang tạo audio của bạn tại <code>tao-audio-truyen.onrender.com</code> để tạo giọng đọc AI từ truyện vừa viết.
-            </p>
-            <a href="https://tao-audio-truyen.onrender.com" target="_blank" rel="noopener noreferrer" class="btn btn-audio-portal btn-sm" style="margin-top: auto; text-decoration: none;">
-              🚀 Chuyển Tới Trang Tạo Audio ↗
-            </a>
-          </div>
-
-          <div class="export-card">
-            <div style="font-size: 26px;">📋</div>
-            <strong>Sao Chép Nhanh Vào Clipboard</strong>
-            <p style="font-size: 12px; color: var(--text-muted);">
-              Copy toàn bộ nội dung văn bản sạch vào bộ nhớ đệm (Clipboard) để dán nhanh vào phần mềm Audio.
-            </p>
-            <button id="btnCopyCleanText" class="btn btn-primary btn-sm">
-              📋 Sao Chép Toàn Bộ Text
-            </button>
-          </div>
-
-          <div class="export-card">
-            <div style="font-size: 26px;">📄</div>
-            <strong>File .TXT / .MD Toàn Bộ Truyện</strong>
-            <p style="font-size: 12px; color: var(--text-muted);">
-              Bao gồm đầy đủ Tựa đề, Dàn ý, Bảng nhân vật và toàn bộ các chương đã viết.
-            </p>
-            <button id="btnDownloadFullMarkdown" class="btn btn-secondary btn-sm">
-              📥 Tải File .MD Bản Đầy Đủ
-            </button>
-          </div>
-
-          <div class="export-card">
-            <div style="font-size: 26px;">📦</div>
-            <strong>File Dự Án (.JSON)</strong>
-            <p style="font-size: 12px; color: var(--text-muted);">
-              Lưu toàn bộ dự án để có thể tải lại vào Thư viện studio bất kỳ lúc nào trên máy khác.
-            </p>
-            <button id="btnDownloadProjectJson" class="btn btn-secondary btn-sm">
-              📥 Tải File JSON Dự Án
-            </button>
-          </div>
         </div>
       </div>
     </section>

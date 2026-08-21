@@ -201,6 +201,7 @@ export class TranslatorController {
     const btnCopy = document.getElementById("btnCopyTranslated");
 
     if (progressBox) progressBox.style.display = "block";
+    if (outputEl) outputEl.value = "";
     if (statusBadge) {
       statusBadge.textContent = "Đang Dịch...";
       statusBadge.className = "badge badge-pink";

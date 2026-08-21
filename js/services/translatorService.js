@@ -171,7 +171,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: BlackBox,Arial,52,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,3,16,0,2,30,30,40,1
+Style: BlackBox,Arial,48,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,3,14,0,2,30,30,95,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -430,90 +430,166 @@ QUY TẮC BẮT BUỘC ĐỂ BẢN DỊCH KHÔNG BỊ THIẾU (CHỐNG TÓM TẮ
   // ==================== WORKFLOW TRANSLATE SRT ====================
 
   /**
-   * Dịch toàn bộ danh sách phụ đề SRT với cơ chế Smart Chunking
+   * Dịch toàn bộ danh sách phụ đề SRT với cơ chế Smart Chunking + Đa Luồng Song Song (Worker Pool) + Gối Đầu Ngữ Cảnh
+   * @param {Array} items Danh sách items SRT
+   * @param {string} modelId ID model Gemini
+   * @param {string} style Phong cách dịch
+   * @param {Function} onProgress Callback báo tiến độ
+   * @param {Object} options Cấu hình luồng { concurrency: 'auto'|1|2|3|4|5, contextOverlap: true }
    */
-  async translateSrt(items, modelId, style = "zhihu", onProgress = null) {
+  async translateSrt(items, modelId, style = "zhihu", onProgress = null, options = {}) {
     if (!items || items.length === 0) return items;
 
     this.isTranslating = true;
     this.isPaused = false;
     this.isCancelled = false;
 
+    const keys = storageService.getApiKeys();
+    if (!keys || keys.length === 0) {
+      throw new Error("Chưa cấu hình Gemini API Key. Vui lòng cài đặt ít nhất 1 Key!");
+    }
+
     const { chunks, config } = this.chunkSrtItems(items, modelId);
     const systemPrompt = this.getTranslationSystemPrompt(style, "srt");
 
-    for (let i = 0; i < chunks.length; i++) {
-      if (this.isCancelled) break;
+    // Xác định số luồng song song (hỗ trợ tự do từ 1 đến 20 luồng)
+    let requestedConcurrency = options.concurrency === "auto" || !options.concurrency
+      ? Math.max(1, Math.min(keys.length, 5))
+      : Math.max(1, Math.min(parseInt(options.concurrency, 10) || 1, 20));
+    
+    const concurrency = Math.min(requestedConcurrency, chunks.length);
+    const useOverlap = options.contextOverlap !== false;
 
-      while (this.isPaused && !this.isCancelled) {
-        await new Promise(r => setTimeout(r, 500));
-      }
+    let completedChunks = 0;
+    let nextChunkIndex = 0;
 
-      const chunk = chunks[i];
-      const chunkSrtInput = this.buildSrt(chunk, "source");
+    // Hàng đợi tasks
+    const tasks = chunks.map((chunk, idx) => ({
+      chunkIndex: idx,
+      chunk,
+      prevChunk: idx > 0 ? chunks[idx - 1] : null
+    }));
 
-      if (onProgress) {
-        onProgress({
-          status: "translating",
-          currentChunkIndex: i + 1,
-          totalChunks: chunks.length,
-          progressPercent: Math.round((i / chunks.length) * 100),
-          message: `Đang dịch phần ${i + 1}/${chunks.length} (${chunk.length} dòng phụ đề)...`
-        });
-      }
+    // Hàm thực thi của 1 Worker
+    const runWorker = async (workerId) => {
+      while (!this.isCancelled && nextChunkIndex < tasks.length) {
+        while (this.isPaused && !this.isCancelled) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+        if (this.isCancelled) break;
 
-      const prompt = `Dịch toàn bộ file phụ đề SRT sau đây sang tiếng Việt chuẩn xác theo đúng quy tắc:\n\n${chunkSrtInput}`;
+        const currentTaskIdx = nextChunkIndex++;
+        if (currentTaskIdx >= tasks.length) break;
 
-      try {
-        const result = await this.callTranslateApi(prompt, systemPrompt, modelId);
-        const translatedSrtText = result.text.trim();
-        const translatedItems = this.parseSrt(translatedSrtText);
+        const task = tasks[currentTaskIdx];
+        const { chunkIndex, chunk, prevChunk } = task;
+        const chunkSrtInput = this.buildSrt(chunk, "source");
 
-        // Ghép bản dịch vào từng item tương ứng
-        chunk.forEach((item, cIdx) => {
-          // Ưu tiên 1: Khớp theo ID
-          let match = translatedItems.find(t => t.id === item.id);
-          // Ưu tiên 2: Khớp theo Timecode
-          if (!match) {
-            match = translatedItems.find(t => t.timecode === item.timecode);
-          }
-          // Ưu tiên 3: Khớp theo thứ tự dòng trong chunk
-          if (!match && translatedItems[cIdx]) {
-            match = translatedItems[cIdx];
-          }
+        // Xoay tua phân bổ đều qua toàn bộ danh sách API Keys có sẵn
+        let keyIndex = (workerId + currentTaskIdx) % keys.length;
+        let currentKey = keys[keyIndex];
 
-          if (match && match.originalText) {
-            item.translatedText = match.originalText;
-          } else if (match && match.translatedText) {
-            item.translatedText = match.translatedText;
-          }
-        });
+        // Gối đầu ngữ cảnh 3 câu cuối của chunk trước
+        let contextPrefix = "";
+        if (useOverlap && prevChunk && prevChunk.length > 0) {
+          const overlapItems = prevChunk.slice(-3);
+          const overlapLines = overlapItems.map(it => `${it.timecode}: ${it.originalText}`).join("\n");
+          contextPrefix = `[BỐI CẢNH 3 CÂU LIỀN TRƯỚC ĐỂ BẠN NẮM VỮNG ĐẠI TỪ XƯNG HÔ VÀ MẠCH CẢM XÚC - TUYỆT ĐỐI KHÔNG DỊCH LẠI CÁC CÂU NÀY]:\n${overlapLines}\n\n`;
+        }
+
+        const prompt = `${contextPrefix}[NỘI DUNG BẮT BUỘC DỊCH SANG TIẾNG VIỆT ĐẦY ĐỦ 100% CÁC KHỐI PHỤ ĐỀ DƯỚI ĐÂY]:\n\n${chunkSrtInput}`;
 
         if (onProgress) {
-          // Lấy chuỗi SRT đã dịch được tính đến thời điểm hiện tại
-          const translatedSoFar = items.filter(it => it.translatedText);
-          const accumulatedText = this.buildSrt(translatedSoFar, "translated");
-
           onProgress({
-            status: "chunk_completed",
-            currentChunkIndex: i + 1,
+            status: "translating",
+            currentChunkIndex: completedChunks + 1,
             totalChunks: chunks.length,
-            progressPercent: Math.round(((i + 1) / chunks.length) * 100),
-            accumulatedText,
-            message: `Hoàn thành phần ${i + 1}/${chunks.length} (${translatedSoFar.length}/${items.length} dòng)!`
+            concurrency,
+            workerId: workerId + 1,
+            progressPercent: Math.round((completedChunks / chunks.length) * 100),
+            message: concurrency > 1
+              ? `[Luồng #${workerId + 1}] Đang dịch phần ${chunkIndex + 1}/${chunks.length} (${chunk.length} dòng)...`
+              : `Đang dịch phần ${chunkIndex + 1}/${chunks.length} (${chunk.length} dòng phụ đề)...`
           });
         }
 
-        // Delay nhẹ giữa các chunk để chống 429
-        if (i < chunks.length - 1 && config.delayMs > 0) {
-          await new Promise(r => setTimeout(r, config.delayMs));
-        }
+        let success = false;
+        let retryAttempts = 0;
+        const maxWorkerRetries = 3;
 
-      } catch (err) {
-        console.error(`Lỗi khi dịch chunk ${i + 1}:`, err);
-        throw new Error(`Lỗi tại phần ${i + 1}/${chunks.length}: ${err.message}`);
+        while (!success && retryAttempts < maxWorkerRetries && !this.isCancelled) {
+          try {
+            const result = await geminiService.callTranslateApiWithKey(prompt, systemPrompt, modelId, currentKey);
+            const translatedSrtText = result.text.trim();
+            const translatedItems = this.parseSrt(translatedSrtText);
+
+            // Ghép bản dịch vào từng item tương ứng
+            chunk.forEach((item, cIdx) => {
+              let match = translatedItems.find(t => t.id === item.id);
+              if (!match) match = translatedItems.find(t => t.timecode === item.timecode);
+              if (!match && translatedItems[cIdx]) match = translatedItems[cIdx];
+
+              if (match && match.originalText) {
+                item.translatedText = match.originalText;
+              } else if (match && match.translatedText) {
+                item.translatedText = match.translatedText;
+              }
+            });
+
+            completedChunks++;
+            success = true;
+
+            if (onProgress) {
+              const translatedSoFar = items.filter(it => it.translatedText);
+              const accumulatedText = this.buildSrt(translatedSoFar, "translated");
+
+              onProgress({
+                status: "chunk_completed",
+                currentChunkIndex: completedChunks,
+                totalChunks: chunks.length,
+                concurrency,
+                workerId: workerId + 1,
+                progressPercent: Math.round((completedChunks / chunks.length) * 100),
+                accumulatedText,
+                message: concurrency > 1
+                  ? `[Đa Luồng x${concurrency}] Đã xong ${completedChunks}/${chunks.length} phần (${translatedSoFar.length}/${items.length} dòng)!`
+                  : `Hoàn thành phần ${completedChunks}/${chunks.length} (${translatedSoFar.length}/${items.length} dòng)!`
+              });
+            }
+
+            // Delay nhẹ giữa các request của cùng 1 worker
+            if (config.delayMs > 0 && nextChunkIndex < tasks.length) {
+              await new Promise(r => setTimeout(r, Math.max(500, Math.round(config.delayMs / (concurrency > 1 ? 1.5 : 1)))));
+            }
+
+          } catch (err) {
+            retryAttempts++;
+            console.warn(`Luồng #${workerId + 1} gặp lỗi ở chunk ${chunkIndex + 1} (Lần ${retryAttempts}):`, err.message);
+
+            // Nếu có nhiều key, thử đổi sang key khác
+            if (keys.length > 1) {
+              keyIndex = (keyIndex + 1) % keys.length;
+              currentKey = keys[keyIndex];
+              console.log(`Luồng #${workerId + 1} đã chuyển sang API Key số ${keyIndex + 1}`);
+            }
+
+            if (retryAttempts >= maxWorkerRetries) {
+              throw new Error(`Luồng #${workerId + 1} không thể dịch phần ${chunkIndex + 1}: ${err.message}`);
+            }
+
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        }
       }
+    };
+
+    // Chạy song song N workers
+    const workerPromises = [];
+    for (let w = 0; w < concurrency; w++) {
+      workerPromises.push(runWorker(w));
     }
+
+    await Promise.all(workerPromises);
 
     this.isTranslating = false;
 
@@ -522,8 +598,9 @@ QUY TẮC BẮT BUỘC ĐỂ BẢN DỊCH KHÔNG BỊ THIẾU (CHỐNG TÓM TẮ
         status: "completed",
         currentChunkIndex: chunks.length,
         totalChunks: chunks.length,
+        concurrency,
         progressPercent: 100,
-        message: `Đã dịch hoàn tất toàn bộ ${items.length} dòng phụ đề!`
+        message: `🎉 Đã dịch hoàn tất toàn bộ ${items.length} dòng phụ đề (${concurrency} luồng song song)!`
       });
     }
 
@@ -533,76 +610,152 @@ QUY TẮC BẮT BUỘC ĐỂ BẢN DỊCH KHÔNG BỊ THIẾU (CHỐNG TÓM TẮ
   // ==================== WORKFLOW TRANSLATE NOVEL / RAW ====================
 
   /**
-   * Dịch văn bản tiểu thuyết Raw sang tiếng Việt
+   * Dịch văn bản tiểu thuyết Raw sang tiếng Việt với cơ chế Đa Luồng Song Song
    */
-  async translateNovel(rawText, modelId, style = "zhihu", onProgress = null) {
+  async translateNovel(rawText, modelId, style = "zhihu", onProgress = null, options = {}) {
     if (!rawText || typeof rawText !== "string") return "";
 
     this.isTranslating = true;
     this.isPaused = false;
     this.isCancelled = false;
 
+    const keys = storageService.getApiKeys();
+    if (!keys || keys.length === 0) {
+      throw new Error("Chưa cấu hình Gemini API Key. Vui lòng cài đặt ít nhất 1 Key!");
+    }
+
     const { chunks, config } = this.chunkRawText(rawText, modelId);
     const systemPrompt = this.getTranslationSystemPrompt(style, "novel");
-    const translatedChunks = [];
+    
+    // Mảng lưu kết quả theo đúng index ban đầu
+    const translatedChunks = new Array(chunks.length);
 
-    for (let i = 0; i < chunks.length; i++) {
-      if (this.isCancelled) break;
+    let requestedConcurrency = options.concurrency === "auto" || !options.concurrency
+      ? Math.max(1, Math.min(keys.length, 5))
+      : Math.max(1, Math.min(parseInt(options.concurrency, 10) || 1, 20));
+    
+    const concurrency = Math.min(requestedConcurrency, chunks.length);
+    const useOverlap = options.contextOverlap !== false;
 
-      while (this.isPaused && !this.isCancelled) {
-        await new Promise(r => setTimeout(r, 500));
-      }
+    let completedChunks = 0;
+    let nextChunkIndex = 0;
 
-      const chunkText = chunks[i];
+    const tasks = chunks.map((chunkText, idx) => ({
+      chunkIndex: idx,
+      chunkText,
+      prevChunkText: idx > 0 ? chunks[idx - 1] : null
+    }));
 
-      if (onProgress) {
-        onProgress({
-          status: "translating",
-          currentChunkIndex: i + 1,
-          totalChunks: chunks.length,
-          progressPercent: Math.round((i / chunks.length) * 100),
-          message: `Đang dịch đoạn ${i + 1}/${chunks.length}...`
-        });
-      }
+    const runWorker = async (workerId) => {
+      while (!this.isCancelled && nextChunkIndex < tasks.length) {
+        while (this.isPaused && !this.isCancelled) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+        if (this.isCancelled) break;
 
-      const prompt = `Dịch ĐẦY ĐỦ 100% toàn bộ văn bản tiểu thuyết sau đây sang tiếng Việt (TUYỆT ĐỐI KHÔNG TÓM TẮT, KHÔNG CẮT BỚT BẤT KỲ CÂU NÀO):\n\n${chunkText}`;
+        const currentTaskIdx = nextChunkIndex++;
+        if (currentTaskIdx >= tasks.length) break;
 
-      try {
-        const result = await this.callTranslateApi(prompt, systemPrompt, modelId);
-        translatedChunks.push(result.text.trim());
+        const task = tasks[currentTaskIdx];
+        const { chunkIndex, chunkText, prevChunkText } = task;
+
+        let keyIndex = (workerId + currentTaskIdx) % keys.length;
+        let currentKey = keys[keyIndex];
+
+        let contextPrefix = "";
+        if (useOverlap && prevChunkText) {
+          const sentences = prevChunkText.split(/([。！？\.\!\?\n]+)/).filter(Boolean);
+          const lastSentences = sentences.slice(-6).join("").trim();
+          if (lastSentences) {
+            contextPrefix = `[BỐI CẢNH ĐOẠN LIỀN TRƯỚC ĐỂ THAM KHẢO MẠCH TRUYỆN - TUYỆT ĐỐI KHÔNG DỊCH LẠI]:\n"${lastSentences}"\n\n`;
+          }
+        }
+
+        const prompt = `${contextPrefix}Dịch ĐẦY ĐỦ 100% toàn bộ văn bản tiểu thuyết sau đây sang tiếng Việt (TUYỆT ĐỐI KHÔNG TÓM TẮT, KHÔNG CẮT BỚT BẤT KỲ CÂU NÀO):\n\n${chunkText}`;
 
         if (onProgress) {
           onProgress({
-            status: "chunk_completed",
-            currentChunkIndex: i + 1,
+            status: "translating",
+            currentChunkIndex: completedChunks + 1,
             totalChunks: chunks.length,
-            progressPercent: Math.round(((i + 1) / chunks.length) * 100),
-            accumulatedText: translatedChunks.join("\n\n"),
-            message: `Hoàn thành đoạn ${i + 1}/${chunks.length}!`
+            concurrency,
+            workerId: workerId + 1,
+            progressPercent: Math.round((completedChunks / chunks.length) * 100),
+            message: concurrency > 1
+              ? `[Luồng #${workerId + 1}] Đang dịch đoạn ${chunkIndex + 1}/${chunks.length}...`
+              : `Đang dịch đoạn ${chunkIndex + 1}/${chunks.length}...`
           });
         }
 
-        if (i < chunks.length - 1 && config.delayMs > 0) {
-          await new Promise(r => setTimeout(r, config.delayMs));
-        }
+        let success = false;
+        let retryAttempts = 0;
+        const maxWorkerRetries = 3;
 
-      } catch (err) {
-        console.error(`Lỗi khi dịch đoạn ${i + 1}:`, err);
-        throw new Error(`Lỗi tại đoạn ${i + 1}/${chunks.length}: ${err.message}`);
+        while (!success && retryAttempts < maxWorkerRetries && !this.isCancelled) {
+          try {
+            const result = await geminiService.callTranslateApiWithKey(prompt, systemPrompt, modelId, currentKey);
+            translatedChunks[chunkIndex] = result.text.trim();
+            completedChunks++;
+            success = true;
+
+            if (onProgress) {
+              const currentFullText = translatedChunks.filter(Boolean).join("\n\n");
+              onProgress({
+                status: "chunk_completed",
+                currentChunkIndex: completedChunks,
+                totalChunks: chunks.length,
+                concurrency,
+                workerId: workerId + 1,
+                progressPercent: Math.round((completedChunks / chunks.length) * 100),
+                accumulatedText: currentFullText,
+                message: concurrency > 1
+                  ? `[Đa Luồng x${concurrency}] Đã xong ${completedChunks}/${chunks.length} đoạn!`
+                  : `Hoàn thành đoạn ${completedChunks}/${chunks.length}!`
+              });
+            }
+
+            if (config.delayMs > 0 && nextChunkIndex < tasks.length) {
+              await new Promise(r => setTimeout(r, Math.max(500, Math.round(config.delayMs / (concurrency > 1 ? 1.5 : 1)))));
+            }
+
+          } catch (err) {
+            retryAttempts++;
+            console.warn(`Luồng #${workerId + 1} gặp lỗi ở đoạn ${chunkIndex + 1} (Lần ${retryAttempts}):`, err.message);
+
+            if (keys.length > 1) {
+              keyIndex = (keyIndex + 1) % keys.length;
+              currentKey = keys[keyIndex];
+            }
+
+            if (retryAttempts >= maxWorkerRetries) {
+              throw new Error(`Luồng #${workerId + 1} không thể dịch đoạn ${chunkIndex + 1}: ${err.message}`);
+            }
+
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        }
       }
+    };
+
+    const workerPromises = [];
+    for (let w = 0; w < concurrency; w++) {
+      workerPromises.push(runWorker(w));
     }
 
+    await Promise.all(workerPromises);
+
     this.isTranslating = false;
-    const fullTranslatedText = translatedChunks.join("\n\n");
+    const fullTranslatedText = translatedChunks.filter(Boolean).join("\n\n");
 
     if (onProgress) {
       onProgress({
         status: "completed",
         currentChunkIndex: chunks.length,
         totalChunks: chunks.length,
+        concurrency,
         progressPercent: 100,
         accumulatedText: fullTranslatedText,
-        message: `Đã dịch hoàn tất toàn bộ văn bản!`
+        message: `🎉 Đã dịch hoàn tất toàn bộ văn bản (${concurrency} luồng song song)!`
       });
     }
 

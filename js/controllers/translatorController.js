@@ -134,9 +134,15 @@ export class TranslatorController {
 
   updateTransEstimate() {
     const sourceText = document.getElementById("transSourceInput")?.value || "";
-    const modelId = document.getElementById("transModelSelect")?.value || "gemini-3.6-flash";
+    const modelId = document.getElementById("transModelSelect")?.value || "gemini-3.5-flash-lite";
+    const concurrencyVal = document.getElementById("transConcurrencySelect")?.value || "auto";
     const estimateBadge = document.getElementById("transEstimateBadge");
     const sourceStats = document.getElementById("transSourceStats");
+    const keys = storageService.getApiKeys();
+
+    let numThreads = concurrencyVal === "auto"
+      ? Math.max(1, Math.min(keys.length, 5))
+      : Math.max(1, Math.min(parseInt(concurrencyVal, 10) || 1, 20));
 
     if (!sourceText.trim()) {
       if (estimateBadge) estimateBadge.textContent = "Chờ nhập nội dung...";
@@ -155,10 +161,10 @@ export class TranslatorController {
 
       const { chunks, config } = translatorService.chunkSrtItems(items, modelId);
       const reqCount = chunks.length;
-      const estTimeSec = Math.max(2, Math.ceil(reqCount * 2.5));
+      const estTimeSec = Math.max(2, Math.ceil((reqCount * 3.8) / numThreads));
 
       if (estimateBadge) {
-        estimateBadge.innerHTML = `⚡ <strong>${reqCount} Request</strong> (~${estTimeSec}s hoàn thành • ${config.chunkSize} dòng/phần)`;
+        estimateBadge.innerHTML = `⚡ <strong>${reqCount} Request</strong> (~${estTimeSec}s hoàn thành • 🚀 <strong>${numThreads} Luồng Song Song</strong> • ${config.chunkSize} dòng/phần)`;
       }
     } else {
       // Novel mode
@@ -171,10 +177,10 @@ export class TranslatorController {
 
       const { chunks, config } = translatorService.chunkRawText(sourceText, modelId);
       const reqCount = chunks.length;
-      const estTimeSec = Math.max(3, Math.ceil(reqCount * 3));
+      const estTimeSec = Math.max(3, Math.ceil((reqCount * 4.0) / numThreads));
 
       if (estimateBadge) {
-        estimateBadge.innerHTML = `⚡ <strong>${reqCount} Request</strong> (~${estTimeSec}s hoàn thành • ${config.chunkSize} chữ/phần)`;
+        estimateBadge.innerHTML = `⚡ <strong>${reqCount} Request</strong> (~${estTimeSec}s hoàn thành • 🚀 <strong>${numThreads} Luồng Song Song</strong> • ${config.chunkSize} chữ/phần)`;
       }
     }
   }
@@ -192,8 +198,10 @@ export class TranslatorController {
       return;
     }
 
-    const modelId = document.getElementById("transModelSelect")?.value || "gemini-3.6-flash";
+    const modelId = document.getElementById("transModelSelect")?.value || "gemini-3.5-flash-lite";
     const customStyle = document.getElementById("transStyleInput")?.value?.trim() || "";
+    const concurrency = document.getElementById("transConcurrencySelect")?.value || "auto";
+    const options = { concurrency, contextOverlap: true };
 
     this.setTranslatingUiState(true);
 
@@ -229,7 +237,7 @@ export class TranslatorController {
         const items = this.transParsedSrt.length > 0 ? this.transParsedSrt : translatorService.parseSrt(sourceText);
         this.transParsedSrt = items;
 
-        const translatedItems = await translatorService.translateSrt(items, modelId, customStyle, onProgress);
+        const translatedItems = await translatorService.translateSrt(items, modelId, customStyle, onProgress, options);
         this.transParsedSrt = translatedItems;
 
         const finalSrtText = translatorService.buildSrt(translatedItems, "translated");
@@ -237,7 +245,7 @@ export class TranslatorController {
 
       } else {
         // Novel mode
-        const finalNovelText = await translatorService.translateNovel(sourceText, modelId, customStyle, onProgress);
+        const finalNovelText = await translatorService.translateNovel(sourceText, modelId, customStyle, onProgress, options);
         this.transTranslatedText = finalNovelText;
         if (outputEl) outputEl.value = finalNovelText;
       }
@@ -399,6 +407,11 @@ export class TranslatorController {
     const transModelSelect = document.getElementById("transModelSelect");
     if (transModelSelect) {
       transModelSelect.addEventListener("change", () => this.updateTransEstimate());
+    }
+
+    const transConcurrencySelect = document.getElementById("transConcurrencySelect");
+    if (transConcurrencySelect) {
+      transConcurrencySelect.addEventListener("change", () => this.updateTransEstimate());
     }
 
     // Translation Custom Style Chips

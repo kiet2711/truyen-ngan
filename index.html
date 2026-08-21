@@ -516,12 +516,30 @@
             <div class="trans-config-item">
               <label class="trans-config-label">🤖 Model AI:</label>
               <select id="transModelSelect" class="param-select param-select-sm">
-                <option value="gemini-3.6-flash" selected>gemini-3.6-flash (Zhihu kịch tính - Gộp 1 Request)</option>
-                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Hạn mức 500 RPD - Gộp 1 Request)</option>
+                <option value="gemini-3.5-flash-lite" selected>gemini-3.5-flash-lite (Hạn mức 500 RPD - Gộp 1 Request)</option>
+                <option value="gemini-3.6-flash">gemini-3.6-flash (Zhihu kịch tính - Gộp 1 Request)</option>
                 <option value="gemma-4-31b-it">gemma-4-31b-it (14.400 RPD - Băm nhỏ an toàn 16k TPM)</option>
                 <option value="gemma-4-26b-a4b-it">gemma-4-26b-a4b-it (14.400 RPD MoE - Tốc độ cao)</option>
                 <option value="gemini-3.7-flash">gemini-3.7-flash (Thế hệ 3.7 - 20 RPD)</option>
                 <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (10 RPM / 20 RPD)</option>
+              </select>
+            </div>
+
+            <div class="trans-config-item">
+              <label class="trans-config-label">⚡ Số Luồng Dịch (1 - 20):</label>
+              <select id="transConcurrencySelect" class="param-select param-select-sm" title="Chọn số luồng dịch song song cùng lúc (1 đến 20 luồng)">
+                <option value="auto" selected>🚀 Tự Động (Theo số lượng API Key)</option>
+                <option value="1">🚶 1 Luồng (Tuần tự - An toàn)</option>
+                <option value="2">⚡ 2 Luồng Song Song (x2 Tốc độ)</option>
+                <option value="3">⚡ 3 Luồng Song Song (x3 Tốc độ)</option>
+                <option value="4">⚡ 4 Luồng Song Song (x4 Tốc độ)</option>
+                <option value="5">⚡ 5 Luồng Song Song (Khuyên dùng)</option>
+                <option value="6">⚡ 6 Luồng Song Song</option>
+                <option value="8">⚡ 8 Luồng Song Song</option>
+                <option value="10">⚡ 10 Luồng Song Song (Siêu tốc)</option>
+                <option value="12">⚡ 12 Luồng Song Song</option>
+                <option value="15">⚡ 15 Luồng Song Song</option>
+                <option value="20">🔥 20 Luồng Song Song (Cực đại)</option>
               </select>
             </div>
 

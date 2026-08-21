@@ -221,6 +221,66 @@ class GeminiService {
     return this.testKey(key, model);
   }
 
+  /**
+   * Gọi Gemini API trực tiếp với 1 API Key cụ thể và tự động retry
+   */
+  async callTranslateApiWithKey(prompt, systemInstruction, modelId, apiKey, maxRetries = 3) {
+    const settings = storageService.getSettings();
+    const effectiveModel = modelId || settings.model || "gemini-3.6-flash";
+    let delay = 2000;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const url = `${BASE_API_URL}/${effectiveModel}:generateContent?key=${apiKey}`;
+        const payload = {
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 8192
+          }
+        };
+
+        if (systemInstruction) {
+          payload.systemInstruction = {
+            parts: [{ text: systemInstruction }]
+          };
+        }
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          const err = new Error(`Gemini API Error ${response.status}: ${errorText}`);
+          err.status = response.status;
+          err.errorText = errorText;
+          throw err;
+        }
+
+        const data = await response.json();
+        const usage = data.usageMetadata || {};
+        storageService.recordApiUsage(apiKey, usage, effectiveModel);
+
+        const candidate = data.candidates?.[0];
+        if (!candidate || !candidate.content?.parts?.[0]?.text) {
+          throw new Error("API không trả về nội dung dịch hợp lệ.");
+        }
+
+        return {
+          text: candidate.content.parts[0].text,
+          usage
+        };
+      } catch (error) {
+        if (attempt === maxRetries) throw error;
+        await new Promise(r => setTimeout(r, delay));
+        delay = Math.min(delay * 1.5, 8000);
+      }
+    }
+  }
+
   // ==================== GENERATE 3 STORY CONCEPTS ====================
 
   /**

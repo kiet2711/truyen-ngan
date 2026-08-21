@@ -125,6 +125,8 @@ export class TranslatorService {
 
       return `${id}\n${timecode}\n${text}`;
     }).join("\n\n") + "\n";
+  }
+
   /**
    * Chuyển đổi timestamp SRT sang chuẩn ASS: 00:01:23,456 -> 0:01:23.45
    */

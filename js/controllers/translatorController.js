@@ -38,7 +38,10 @@ export class TranslatorController {
       if (sourceTitle) sourceTitle.innerHTML = `<span>📖</span> Văn Bản Gốc (Tiếng Trung / Anh / Raw):`;
       if (sourceInput) sourceInput.placeholder = "Dán toàn bộ văn bản tiểu thuyết tiếng Trung (hoặc tiếng Anh) tại đây...\n\nHệ thống sẽ tự động gộp chunk thông minh và dịch trọn vẹn 100% không cắt bớt câu chữ.";
       
+      const btnAss = document.getElementById("btnDownloadAssBlackBox");
+      
       if (btnVi) btnVi.style.display = "none";
+      if (btnAss) btnAss.style.display = "none";
       if (btnBi) btnBi.style.display = "none";
       if (btnTxt) btnTxt.style.display = "inline-flex";
       if (btnAudio) btnAudio.style.display = "inline-flex";
@@ -49,7 +52,9 @@ export class TranslatorController {
       if (sourceTitle) sourceTitle.innerHTML = `<span>📄</span> File Phụ Đề Gốc (.SRT):`;
       if (sourceInput) sourceInput.placeholder = "Dán nội dung file phụ đề SRT vào đây...\nVí dụ:\n1\n00:00:01,000 --> 00:00:04,000\n你好，欢迎来到这里\n\n2\n00:00:04,500 --> 00:00:07,000\n今天我们讲一个故事";
       
+      const btnAss = document.getElementById("btnDownloadAssBlackBox");
       if (btnVi) btnVi.style.display = "inline-flex";
+      if (btnAss) btnAss.style.display = "inline-flex";
       if (btnBi) btnBi.style.display = "inline-flex";
       if (btnTxt) btnTxt.style.display = "none";
       if (btnAudio) btnAudio.style.display = "inline-flex";
@@ -295,12 +300,14 @@ export class TranslatorController {
 
   updateTransExportButtons(enabled) {
     const btnVi = document.getElementById("btnDownloadSrtVi");
+    const btnAss = document.getElementById("btnDownloadAssBlackBox");
     const btnBi = document.getElementById("btnDownloadSrtBilingual");
     const btnTxt = document.getElementById("btnDownloadTxt");
     const btnAudio = document.getElementById("btnSendToAudioStudio");
     const btnLib = document.getElementById("btnSaveToLibrary");
 
     if (btnVi) btnVi.disabled = !enabled;
+    if (btnAss) btnAss.disabled = !enabled;
     if (btnBi) btnBi.disabled = !enabled;
     if (btnTxt) btnTxt.disabled = !enabled;
     if (btnAudio) btnAudio.disabled = !enabled;
@@ -317,6 +324,17 @@ export class TranslatorController {
     const filename = `subtitles_${Date.now()}${suffix}`;
     this.app.triggerDownload(content, filename, "text/plain;charset=utf-8");
     this.app.showToast(`Đã tải file phụ đề: ${filename}`, "success");
+  }
+
+  downloadAssBlackBox(mode = "translated") {
+    if (!this.transParsedSrt || this.transParsedSrt.length === 0) {
+      this.app.showToast("Chưa có nội dung phụ đề để tải về!", "warning");
+      return;
+    }
+    const content = translatorService.buildAss(this.transParsedSrt, mode);
+    const filename = `subtitles_blackbox_${Date.now()}.ass`;
+    this.app.triggerDownload(content, filename, "text/x-ssa;charset=utf-8");
+    this.app.showToast(`Đã tải file phụ đề .ASS nền đen che sub gốc: ${filename}`, "success");
   }
 
   downloadTransTxt() {
@@ -492,6 +510,9 @@ export class TranslatorController {
 
     const btnVi = document.getElementById("btnDownloadSrtVi");
     if (btnVi) btnVi.addEventListener("click", () => this.downloadSrt("translated"));
+
+    const btnAss = document.getElementById("btnDownloadAssBlackBox");
+    if (btnAss) btnAss.addEventListener("click", () => this.downloadAssBlackBox("translated"));
 
     const btnBi = document.getElementById("btnDownloadSrtBilingual");
     if (btnBi) btnBi.addEventListener("click", () => this.downloadSrt("bilingual"));

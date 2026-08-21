@@ -113,58 +113,112 @@ class GeminiService {
   }
 
   async callWithRetry(apiFn, maxRetries = 3) {
-    let delay = 3000;
+    const keys = storageService.getApiKeys();
+    const effectiveRetries = Math.max(maxRetries, keys.length > 1 ? keys.length + 1 : 3);
+    let delay = 2000;
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    for (let attempt = 1; attempt <= effectiveRetries; attempt++) {
       try {
         return await apiFn();
       } catch (error) {
-        console.warn(`Lỗi gọi Gemini API (Lần ${attempt}/${maxRetries}):`, error);
+        console.warn(`Lỗi gọi Gemini API (Lần ${attempt}/${effectiveRetries}):`, error);
 
-        const isRateLimit = error.message.includes("429") || 
-                            error.message.includes("RESOURCE_EXHAUSTED") ||
-                            error.message.includes("quota");
+        const errMsg = (error.message || "").toLowerCase();
+        const errStatus = error.status || 0;
 
-        if (isRateLimit) {
+        const isRateLimit = errMsg.includes("429") || 
+                            errMsg.includes("resource_exhausted") ||
+                            errMsg.includes("quota") ||
+                            errStatus === 429;
+
+        const isKeyRevokedOrDenied = errMsg.includes("403") ||
+                                     errMsg.includes("permission_denied") ||
+                                     errMsg.includes("denied access") ||
+                                     errMsg.includes("400") ||
+                                     errMsg.includes("api_key_invalid") ||
+                                     errMsg.includes("invalid_argument") ||
+                                     errMsg.includes("401") ||
+                                     errStatus === 403 ||
+                                     errStatus === 401;
+
+        if (isRateLimit || isKeyRevokedOrDenied) {
           const rotated = this.rotateKey();
-          if (rotated) continue;
+          if (rotated) {
+            console.warn(`Tự động chuyển sang API Key tiếp theo do gặp lỗi ${isKeyRevokedOrDenied ? 'Key bị khóa/hỏng' : 'Rate Limit'}.`);
+            continue;
+          }
         }
 
-        if (attempt === maxRetries) throw error;
+        if (attempt === effectiveRetries) throw error;
 
         console.log(`Đang chờ ${delay / 1000}s trước khi thử lại...`);
         await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2;
+        delay = Math.min(delay * 1.5, 8000);
       }
     }
   }
 
+  /**
+   * Kiểm tra chi tiết trạng thái 1 API Key cụ thể
+   */
+  async checkSingleKey(key, model = "gemini-3.6-flash") {
+    try {
+      const url = `${BASE_API_URL}/${model}:generateContent?key=${key}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: "ping" }] }],
+          generationConfig: { maxOutputTokens: 5 }
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        const msg = errData.error?.message || `HTTP ${response.status}`;
+        const status = response.status;
+        return {
+          ok: false,
+          key,
+          status,
+          error: msg,
+          isDenied: status === 403 || msg.includes("denied access") || msg.includes("PERMISSION_DENIED"),
+          isInvalid: status === 400 || status === 401 || msg.includes("API_KEY_INVALID")
+        };
+      }
+
+      const data = await response.json();
+      if (data.usageMetadata) {
+        storageService.recordApiUsage(key, data.usageMetadata, model);
+      }
+      return {
+        ok: true,
+        key,
+        status: 200,
+        error: null
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        key,
+        status: 0,
+        error: e.message || "Lỗi mạng hoặc không thể kết nối",
+        isDenied: false,
+        isInvalid: false
+      };
+    }
+  }
+
   async testKey(key, model = "gemini-3.6-flash") {
-    return this.testApiKey(key, model);
+    const res = await this.checkSingleKey(key, model);
+    if (!res.ok) {
+      throw new Error(res.error || `HTTP ${res.status}`);
+    }
+    return true;
   }
 
   async testApiKey(key, model = "gemini-3.6-flash") {
-    const url = `${BASE_API_URL}/${model}:generateContent?key=${key}`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: "Hãy phản hồi ngắn gọn: 'API Hoạt động tốt'" }] }]
-      })
-    });
-
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error?.message || `Lỗi HTTP ${response.status}`);
-    }
-
-    const data = await response.json();
-    if (data.usageMetadata) {
-      storageService.recordApiUsage(key, data.usageMetadata, model);
-    } else {
-      storageService.recordApiUsage(key, { promptTokenCount: 15, candidatesTokenCount: 10, totalTokenCount: 25 }, model);
-    }
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "OK";
+    return this.testKey(key, model);
   }
 
   // ==================== GENERATE 3 STORY CONCEPTS ====================

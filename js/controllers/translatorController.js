@@ -174,12 +174,13 @@ export class TranslatorController {
 
     this.setTranslatingUiState(true);
 
-    const progressBox = document.getElementById("transProgressBox");
+    const progressBox = document.getElementById("transProgressContainer") || document.getElementById("transProgressBox");
     const progressMsg = document.getElementById("transProgressMsg");
     const progressPct = document.getElementById("transProgressPct");
     const progressBar = document.getElementById("transProgressBar");
     const statusBadge = document.getElementById("transStatusBadge");
     const outputEl = document.getElementById("transResultOutput");
+    const btnCopy = document.getElementById("btnCopyTranslated");
 
     if (progressBox) progressBox.style.display = "block";
     if (statusBadge) {
@@ -195,6 +196,7 @@ export class TranslatorController {
       if (p.accumulatedText && outputEl) {
         outputEl.value = p.accumulatedText;
         outputEl.scrollTop = outputEl.scrollHeight;
+        if (btnCopy) btnCopy.disabled = false;
       }
     };
 
@@ -221,6 +223,7 @@ export class TranslatorController {
         statusBadge.className = "badge badge-emerald";
       }
 
+      if (btnCopy) btnCopy.disabled = false;
       this.updateTransExportButtons(true);
       this.app.showToast("🎉 Đã hoàn tất bản dịch thành công!", "success");
 
@@ -240,7 +243,7 @@ export class TranslatorController {
     const btnStart = document.getElementById("btnStartTranslate");
     const btnPause = document.getElementById("btnPauseTranslate");
     const btnCancel = document.getElementById("btnCancelTranslate");
-    const progressBox = document.getElementById("transProgressBox");
+    const progressBox = document.getElementById("transProgressContainer") || document.getElementById("transProgressBox");
 
     if (isTranslating) {
       if (btnStart) btnStart.style.display = "none";

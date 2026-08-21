@@ -380,12 +380,17 @@ QUY TẮC BẮT BUỘC ĐỂ BẢN DỊCH KHÔNG BỊ THIẾU (CHỐNG TÓM TẮ
         });
 
         if (onProgress) {
+          // Lấy chuỗi SRT đã dịch được tính đến thời điểm hiện tại
+          const translatedSoFar = items.filter(it => it.translatedText);
+          const accumulatedText = this.buildSrt(translatedSoFar, "translated");
+
           onProgress({
             status: "chunk_completed",
             currentChunkIndex: i + 1,
             totalChunks: chunks.length,
             progressPercent: Math.round(((i + 1) / chunks.length) * 100),
-            message: `Hoàn thành phần ${i + 1}/${chunks.length}!`
+            accumulatedText,
+            message: `Hoàn thành phần ${i + 1}/${chunks.length} (${translatedSoFar.length}/${items.length} dòng)!`
           });
         }
 

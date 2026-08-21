@@ -857,24 +857,78 @@ class NovelStudioApp {
     }
 
     btn.disabled = true;
-    btn.textContent = "Đang kiểm tra...";
-    resultEl.innerHTML = `<span style="color: var(--text-dim);"><span class="typing-cursor"></span> Đang gửi tín hiệu kiểm tra tới Gemini API...</span>`;
+    btn.textContent = `Đang quét (0/${keys.length})...`;
+    resultEl.innerHTML = `<div style="color: var(--text-dim); padding: 8px 0;"><span class="typing-cursor"></span> Đang kiểm tra từng API Key...</div>`;
 
-    const modelId = document.getElementById("modelSelect").value || "gemini-3.6-flash";
-    const originalKeys = storageService.getApiKeys();
-    storageService.saveApiKeys(keys);
+    const modelId = document.getElementById("modelSelect")?.value || "gemini-3.6-flash";
+    const results = [];
+    const validKeys = [];
 
     try {
-      const isOk = await geminiService.testKey(keys[0], modelId);
-      if (isOk) {
-        resultEl.innerHTML = `<span style="color: var(--accent-emerald);">✓ Kết nối Gemini API (${modelId}) thành công và hợp lệ!</span>`;
-      } else {
-        resultEl.innerHTML = `<span style="color: var(--accent-rose);">✕ API Key không hợp lệ hoặc model không khả dụng.</span>`;
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        btn.textContent = `Đang quét (${i + 1}/${keys.length})...`;
+        const res = await geminiService.checkSingleKey(key, modelId);
+        results.push(res);
+        if (res.ok) {
+          validKeys.push(key);
+        }
       }
+
+      // Render danh sách chi tiết
+      const deadCount = results.filter(r => !r.ok).length;
+      const liveCount = results.filter(r => r.ok).length;
+
+      let html = `<div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin-top: 8px;">`;
+      html += `<div style="font-weight: 600; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+        <span>Kết Quả Quét: <span style="color: var(--accent-emerald);">${liveCount} Hoạt động</span> / <span style="color: ${deadCount > 0 ? 'var(--accent-rose)' : 'var(--text-muted)'};">${deadCount} Lỗi</span></span>
+        ${deadCount > 0 ? `<button id="btnAutoCleanKeys" class="btn btn-sm" style="background: var(--accent-rose); color: white; padding: 2px 8px; font-size: 11px; border-radius: 4px; cursor: pointer;">🧹 Xóa ${deadCount} Key Lỗi</button>` : ''}
+      </div>`;
+
+      html += `<div style="display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto;">`;
+      results.forEach((res, idx) => {
+        const masked = storageService.maskApiKey(res.key);
+        if (res.ok) {
+          html += `<div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 4px 6px; background: rgba(16, 185, 129, 0.1); border-left: 3px solid var(--accent-emerald); border-radius: 3px;">
+            <span><strong>Key #${idx + 1}:</strong> <code>${masked}</code></span>
+            <span style="color: var(--accent-emerald); font-weight: 600;">✓ Sống (OK)</span>
+          </div>`;
+        } else {
+          let errText = "Lỗi kết nối";
+          if (res.isDenied || res.status === 403) errText = "⛔ Bị Google Khóa (403 PERMISSION_DENIED)";
+          else if (res.isInvalid || res.status === 400 || res.status === 401) errText = "❌ Key Không Hợp Lệ (400/401)";
+          else if (res.status === 429) errText = "⏳ Chạm Hạn Mức (429 Rate Limit)";
+          else if (res.error) errText = `✕ ${res.error.substring(0, 60)}`;
+
+          html += `<div style="display: flex; flex-direction: column; font-size: 11px; padding: 4px 6px; background: rgba(244, 63, 94, 0.1); border-left: 3px solid var(--accent-rose); border-radius: 3px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span><strong>Key #${idx + 1}:</strong> <code>${masked}</code></span>
+              <span style="color: var(--accent-rose); font-weight: 600;">❌ Hỏng / Khóa</span>
+            </div>
+            <div style="color: var(--accent-rose); font-size: 10px; margin-top: 2px;">${errText}</div>
+          </div>`;
+        }
+      });
+      html += `</div></div>`;
+
+      resultEl.innerHTML = html;
+
+      // Xử lý sự kiện bấm nút dọn dẹp key lỗi
+      const btnClean = document.getElementById("btnAutoCleanKeys");
+      if (btnClean) {
+        btnClean.addEventListener("click", () => {
+          document.getElementById("apiKeysInput").value = validKeys.join("\n");
+          storageService.saveApiKeys(validKeys);
+          this.updateApiKeyStatus();
+          this.renderModalKeyQuotaTable();
+          this.showToast(`Đã tự động lọc và xóa ${deadCount} API Key hỏng!`, "success");
+          resultEl.innerHTML = `<span style="color: var(--accent-emerald);">✓ Đã dọn dẹp xong! Hiện còn ${validKeys.length} API Key sống sẵn sàng sử dụng.</span>`;
+        });
+      }
+
     } catch (e) {
-      resultEl.innerHTML = `<span style="color: var(--accent-rose);">✕ Lỗi kết nối: ${e.message}</span>`;
+      resultEl.innerHTML = `<span style="color: var(--accent-rose);">✕ Lỗi kiểm tra: ${e.message}</span>`;
     } finally {
-      storageService.saveApiKeys(originalKeys);
       btn.disabled = false;
       btn.textContent = "🔍 Test Kết Nối";
     }

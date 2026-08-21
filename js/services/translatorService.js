@@ -19,6 +19,43 @@ export class TranslatorService {
   // ==================== SRT PARSER & SERIALIZER ====================
 
   /**
+   * Chuẩn hóa 1 mốc thời gian riêng lẻ thành định dạng chuẩn quốc tế HH:MM:SS,mmm
+   * Sửa lỗi thiếu số 0 (ví dụ: 9:0:35,379 -> 09:00:35,379) để Windows Media Player nhận phụ đề 100%
+   */
+  normalizeSingleTime(t) {
+    if (!t || typeof t !== "string") return "00:00:00,000";
+    const cleaned = t.trim().replace(/\./g, ",");
+    const [hms, msPart] = cleaned.split(",");
+    const ms = (msPart || "000").padEnd(3, "0").substring(0, 3);
+    const parts = (hms || "").split(":").map(p => parseInt(p, 10) || 0);
+    let h = 0, m = 0, s = 0;
+    if (parts.length >= 3) {
+      h = parts[0];
+      m = parts[1];
+      s = parts[2];
+    } else if (parts.length === 2) {
+      m = parts[0];
+      s = parts[1];
+    } else if (parts.length === 1) {
+      s = parts[0];
+    }
+    const pad = (n, len = 2) => String(n).padStart(len, "0");
+    return `${pad(h)}:${pad(m)}:${pad(s)},${ms}`;
+  }
+
+  /**
+   * Chuẩn hóa cả chuỗi timecode: 9:0:35,379 --> 9:0:37,239 -> 09:00:35,379 --> 09:00:37,239
+   */
+  normalizeTimecode(timecode) {
+    if (!timecode || typeof timecode !== "string") return "";
+    const parts = timecode.split(/\s*-->\s*/);
+    if (parts.length === 2) {
+      return `${this.normalizeSingleTime(parts[0])} --> ${this.normalizeSingleTime(parts[1])}`;
+    }
+    return timecode.trim();
+  }
+
+  /**
    * Phân tích nội dung file SRT thành mảng object
    * @param {string} srtContent 
    * @returns {Array<{ id: number, timecode: string, originalText: string, translatedText: string }>}
@@ -44,8 +81,9 @@ export class TranslatorService {
           timecodeLineIndex = 1;
         }
 
-        const timecode = lines[timecodeLineIndex] ? lines[timecodeLineIndex].trim() : "";
-        if (timecode.includes("-->")) {
+        const rawTimecode = lines[timecodeLineIndex] ? lines[timecodeLineIndex].trim() : "";
+        if (rawTimecode.includes("-->")) {
+          const timecode = this.normalizeTimecode(rawTimecode);
           const textLines = lines.slice(timecodeLineIndex + 1);
           const originalText = textLines.join("\n").trim();
           items.push({
@@ -72,6 +110,7 @@ export class TranslatorService {
 
     return items.map((item, idx) => {
       const id = item.id !== undefined ? item.id : (idx + 1);
+      const timecode = this.normalizeTimecode(item.timecode);
       let text = item.translatedText || item.originalText || "";
 
       if (mode === "bilingual") {
@@ -84,7 +123,7 @@ export class TranslatorService {
         text = item.originalText;
       }
 
-      return `${id}\n${item.timecode}\n${text}`;
+      return `${id}\n${timecode}\n${text}`;
     }).join("\n\n") + "\n";
   }
 

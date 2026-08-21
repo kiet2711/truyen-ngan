@@ -148,7 +148,12 @@ class NovelStudioApp {
   }
 
   triggerDownload(content, filename, mimeType) {
-    const blob = new Blob([content], { type: mimeType });
+    // Nếu là file SRT, tự động thêm UTF-8 BOM (\uFEFF) để Windows Media Player, VLC và Notepad nhận tiếng Việt có dấu 100%
+    let finalContent = content;
+    if (filename && filename.toLowerCase().endsWith(".srt") && typeof finalContent === "string" && !finalContent.startsWith("\uFEFF")) {
+      finalContent = "\uFEFF" + finalContent;
+    }
+    const blob = new Blob([finalContent], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

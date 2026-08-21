@@ -76,7 +76,17 @@ export class TranslatorController {
       if (isSrt || translatorService.isSrtContent(content)) {
         this.switchTransMode("srt");
         this.transParsedSrt = translatorService.parseSrt(content);
-        this.app.showToast(`Đã nạp file phụ đề: ${file.name} (${this.transParsedSrt.length} dòng)`, "success");
+        
+        // Tự động chuẩn hóa timecode và đẩy ra ô kết quả ngay lập tức
+        const normalizedSrt = translatorService.buildSrt(this.transParsedSrt, "source");
+        const outputEl = document.getElementById("transResultOutput");
+        if (outputEl) outputEl.value = normalizedSrt;
+        
+        this.updateTransExportButtons(true);
+        const btnCopy = document.getElementById("btnCopyTranslated");
+        if (btnCopy) btnCopy.disabled = false;
+
+        this.app.showToast(`Đã nạp & tự động chuẩn hóa Timecode: ${file.name} (${this.transParsedSrt.length} dòng)`, "success");
       } else {
         this.switchTransMode("novel");
         this.transRawText = content;
@@ -98,6 +108,14 @@ export class TranslatorController {
         this.switchTransMode("srt");
       }
       this.transParsedSrt = translatorService.parseSrt(raw);
+      
+      const normalizedSrt = translatorService.buildSrt(this.transParsedSrt, "source");
+      const outputEl = document.getElementById("transResultOutput");
+      if (outputEl && !outputEl.value) outputEl.value = normalizedSrt;
+      
+      this.updateTransExportButtons(true);
+      const btnCopy = document.getElementById("btnCopyTranslated");
+      if (btnCopy) btnCopy.disabled = false;
     } else {
       if (this.transMode !== "novel" && raw.trim().length > 0) {
         this.switchTransMode("novel");
